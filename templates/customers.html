@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Customers - Project Kashi{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Customers</h1>
+        <p class="page-subtitle">Registered customers and their account/loan counts</p>
+    </div>
+    <div class="page-actions">
+        <a href="{{ url_for('customer_new') }}" class="btn btn-primary">Register New Customer</a>
+    </div>
+</div>
+
+<section class="panel">
+    <div class="panel-header">
+        <form action="{{ url_for('customers') }}" method="get" class="search-form">
+            <input type="text" name="q" value="{{ search }}" placeholder="Search by name, mobile, or email" class="input">
+            <button type="submit" class="btn btn-secondary">Search</button>
+            {% if search %}<a href="{{ url_for('customers') }}" class="link">Clear</a>{% endif %}
+        </form>
+    </div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Mobile</th>
+                    <th>Email</th>
+                    <th>City</th>
+                    <th>Registered</th>
+                    <th>Accounts</th>
+                    <th>Loans</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in customers %}
+                <tr>
+                    <td>{{ c.CustomerID }}</td>
+                    <td>{{ c.FirstName }} {{ c.LastName }}</td>
+                    <td>{{ c.Mobile }}</td>
+                    <td>{{ c.Email }}</td>
+                    <td>{{ c.City }}</td>
+                    <td>{{ c.RegistrationDate|datetime }}</td>
+                    <td>{{ c.account_count }}</td>
+                    <td>{{ c.loan_count }}</td>
+                    <td><a href="{{ url_for('customer_detail', customer_id=c.CustomerID) }}" class="link">View</a></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="9" class="empty-state">No customers found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

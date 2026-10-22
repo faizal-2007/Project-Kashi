@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Branches - Project Kashi{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h1 class="page-title">Branches</h1><p class="page-subtitle">Branch network with account and employee counts</p></div>
+    <div class="page-actions"><a href="{{ url_for('branch_new') }}" class="btn btn-primary">Add Branch</a></div>
+</div>
+
+<section class="panel">
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead><tr><th>ID</th><th>Branch</th><th>IFSC</th><th>City</th><th>State</th><th>Employees</th><th>Accounts</th><th>Active</th><th>Total Balance</th></tr></thead>
+            <tbody>
+            {% for b in branches %}
+                <tr>
+                    <td>{{ b.BranchID }}</td>
+                    <td>{{ b.BranchName }}</td>
+                    <td>{{ b.IFSCCode }}</td>
+                    <td>{{ b.City }}</td>
+                    <td>{{ b.State }}</td>
+                    <td>{{ b.EmployeeCount }}</td>
+                    <td>{{ b.AccountCount }}</td>
+                    <td>{{ b.ActiveAccountCount }}</td>
+                    <td>{{ b.TotalBalance|currency }}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="9" class="empty-state">No branches configured.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

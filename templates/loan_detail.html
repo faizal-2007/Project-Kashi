@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Loan {{ loan.LoanID }} - Project Kashi{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h1 class="page-title">Loan #{{ loan.LoanID }}</h1><p class="page-subtitle">{{ loan.LoanType }} for {{ loan.CustomerName }}</p></div>
+    <div class="page-actions"><a href="{{ url_for('loans') }}" class="btn btn-secondary">Back to Loans</a></div>
+</div>
+
+<div class="stat-grid stat-grid-4">
+    <div class="stat-card"><div class="stat-label">Loan Amount</div><div class="stat-value">{{ loan.LoanAmount|currency }}</div></div>
+    <div class="stat-card"><div class="stat-label">Total Paid</div><div class="stat-value">{{ loan.TotalPaid|currency }}</div></div>
+    <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value">{{ loan.OutstandingAmount|currency }}</div></div>
+    <div class="stat-card"><div class="stat-label">Status</div><div class="stat-value"><span class="badge badge-{{ loan.LoanStatus|lower }}">{{ loan.LoanStatus }}</span></div></div>
+</div>
+
+<div class="grid-2">
+    <section class="panel">
+        <div class="panel-header"><h2 class="panel-title">Loan Details</h2></div>
+        <div class="detail-grid">
+            <div><span class="detail-label">Branch</span><span class="detail-value">{{ loan.BranchName }}</span></div>
+            <div><span class="detail-label">Interest Rate</span><span class="detail-value">{{ loan.InterestRate }}%</span></div>
+            <div><span class="detail-label">Start Date</span><span class="detail-value">{{ loan.StartDate }}</span></div>
+            <div><span class="detail-label">Tenure</span><span class="detail-value">{{ loan.TenureMonths }} months</span></div>
+            <div><span class="detail-label">Payments</span><span class="detail-value">{{ loan.PaymentCount }}</span></div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-header"><h2 class="panel-title">Record Payment</h2></div>
+        {% if loan.LoanStatus == 'Approved' %}
+        <form method="post" action="{{ url_for('loan_payment_create', loan_id=loan.LoanID) }}" class="form-grid">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group"><label for="Amount">Amount (₹)</label><input class="input" type="number" min="0.01" step="0.01" max="{{ loan.OutstandingAmount }}" id="Amount" name="Amount" required></div>
+            <div class="form-group"><label for="PaymentMode">Payment Mode</label>
+                <select class="input" id="PaymentMode" name="PaymentMode" required>
+                    {% for m in ['Cash','Cheque','NEFT','UPI','Card'] %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="form-actions"><button class="btn btn-primary" type="submit">Post Payment</button></div>
+        </form>
+        {% else %}
+        <p class="empty-state">Payments are allowed only for Approved loans.</p>
+        {% endif %}
+    </section>
+</div>
+
+<section class="panel">
+    <div class="panel-header"><h2 class="panel-title">Payment History</h2></div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead><tr><th>Payment ID</th><th>Date</th><th>Amount</th><th>Mode</th><th>Reference</th></tr></thead>
+            <tbody>
+            {% for p in payments %}
+                <tr><td>{{ p.PaymentID }}</td><td>{{ p.PaymentDate|datetime }}</td><td>{{ p.Amount|currency }}</td><td>{{ p.PaymentMode }}</td><td>{{ p.ReferenceNumber or '-' }}</td></tr>
+            {% else %}
+                <tr><td colspan="5" class="empty-state">No payments recorded.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

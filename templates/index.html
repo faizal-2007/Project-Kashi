@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Project Kashi{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Banking Dashboard</h1>
+        <p class="page-subtitle">Live figures from the project_kashi MySQL database</p>
+    </div>
+    <div class="page-actions">
+        <a href="{{ url_for('customer_new') }}" class="btn btn-primary">Register Customer</a>
+        <a href="{{ url_for('account_open') }}" class="btn btn-secondary">Open Account</a>
+    </div>
+</div>
+
+<div class="stat-grid">
+    <div class="stat-card">
+        <div class="stat-label">Total Customers</div>
+        <div class="stat-value">{{ total_customers }}</div>
+        <div class="stat-foot">Registered in CUSTOMER</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Total Accounts</div>
+        <div class="stat-value">{{ total_accounts }}</div>
+        <div class="stat-foot">{{ active_accounts }} active accounts</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Branches</div>
+        <div class="stat-value">{{ total_branches }}</div>
+        <div class="stat-foot">Across all states</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Transactions</div>
+        <div class="stat-value">{{ total_transactions }}</div>
+        <div class="stat-foot">Recorded in BANK_TRANSACTION</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Active Balance</div>
+        <div class="stat-value">{{ total_balance|currency }}</div>
+        <div class="stat-foot">Sum of all account balances</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Loans</div>
+        <div class="stat-value">{{ total_loans }}</div>
+        <div class="stat-foot">Across all loan statuses</div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <section class="panel">
+        <div class="panel-header">
+            <h2 class="panel-title">Recent Transactions</h2>
+            <a href="{{ url_for('transactions') }}" class="link">View all</a>
+        </div>
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Account</th>
+                        <th>Type</th>
+                        <th>Amount</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in recent_transactions %}
+                    <tr>
+                        <td>{{ t.TransactionID }}</td>
+                        <td><a href="{{ url_for('account_detail', account_id=t.AccountID) }}" class="link">{{ t.AccountNumber }}</a></td>
+                        <td><span class="badge badge-{{ t.TransactionType|lower }}">{{ t.TransactionType.replace('_', ' ') }}</span></td>
+                        <td>{{ t.Amount|currency }}</td>
+                        <td>{{ t.TransactionDate|datetime }}</td>
+                        <td><span class="badge badge-{{ t.TransactionStatus|lower }}">{{ t.TransactionStatus|title }}</span></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="empty-state">No transactions recorded yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-header">
+            <h2 class="panel-title">Branch Overview</h2>
+            <a href="{{ url_for('branches') }}" class="link">All branches</a>
+        </div>
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Branch</th>
+                        <th>City</th>
+                        <th>Accounts</th>
+                        <th>Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for b in branch_summary %}
+                    <tr>
+                        <td>{{ b.BranchName }}</td>
+                        <td>{{ b.City }}</td>
+                        <td>{{ b.AccountCount }} ({{ b.ActiveAccountCount }} active)</td>
+                        <td>{{ b.TotalBalance|currency }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="empty-state">No branches available.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Customer Details - Project Kashi{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">{{ customer.FirstName }} {{ customer.LastName }}</h1>
+        <p class="page-subtitle">CustomerID: {{ customer.CustomerID }}</p>
+    </div>
+    <div class="page-actions">
+        <a href="{{ url_for('customers') }}" class="btn btn-secondary">Back to Customers</a>
+        <a href="{{ url_for('account_open') }}" class="btn btn-primary">Open Account</a>
+    </div>
+</div>
+
+<section class="panel">
+    <div class="panel-header"><h2 class="panel-title">Profile</h2></div>
+    <div class="detail-grid">
+        <div><span class="detail-label">Date of Birth</span><span class="detail-value">{{ customer.DateOfBirth }}</span></div>
+        <div><span class="detail-label">Gender</span><span class="detail-value">{{ customer.Gender }}</span></div>
+        <div><span class="detail-label">Mobile</span><span class="detail-value">{{ customer.Mobile }}</span></div>
+        <div><span class="detail-label">Email</span><span class="detail-value">{{ customer.Email }}</span></div>
+        <div><span class="detail-label">City</span><span class="detail-value">{{ customer.City }}</span></div>
+        <div><span class="detail-label">Registration Date</span><span class="detail-value">{{ customer.RegistrationDate|datetime }}</span></div>
+        <div class="detail-full"><span class="detail-label">Address</span><span class="detail-value">{{ customer.Address }}</span></div>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header"><h2 class="panel-title">Accounts Held</h2></div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr><th>Account Number</th><th>Type</th><th>Branch</th><th>Balance</th><th>Status</th><th>Holder Type</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+                {% for a in accounts %}
+                <tr>
+                    <td>{{ a.AccountNumber }}</td>
+                    <td>{{ a.AccountType }}</td>
+                    <td>{{ a.BranchName }}</td>
+                    <td>{{ a.Balance|currency }}</td>
+                    <td><span class="badge badge-{{ a.Status|lower }}">{{ a.Status }}</span></td>
+                    <td>{{ a.HolderType }}</td>
+                    <td><a href="{{ url_for('account_detail', account_id=a.AccountID) }}" class="link">Details</a></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="empty-state">No accounts linked.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header"><h2 class="panel-title">Loans</h2></div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr><th>LoanID</th><th>Type</th><th>Amount</th><th>Interest</th><th>Start Date</th><th>Tenure</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                {% for l in loans %}
+                <tr>
+                    <td>{{ l.LoanID }}</td>
+                    <td>{{ l.LoanType }}</td>
+                    <td>{{ l.LoanAmount|currency }}</td>
+                    <td>{{ l.InterestRate }}%</td>
+                    <td>{{ l.StartDate }}</td>
+                    <td>{{ l.TenureMonths }} months</td>
+                    <td><span class="badge badge-{{ l.LoanStatus|lower }}">{{ l.LoanStatus }}</span></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="empty-state">No loans recorded.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header"><h2 class="panel-title">Recent Transactions (up to 50)</h2></div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr><th>ID</th><th>Account</th><th>Type</th><th>Amount</th><th>Date</th><th>Reference</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                {% for t in transactions %}
+                <tr>
+                    <td>{{ t.TransactionID }}</td>
+                    <td>{{ t.AccountNumber }}</td>
+                    <td><span class="badge badge-{{ t.TransactionType|lower }}">{{ t.TransactionType.replace('_',' ') }}</span></td>
+                    <td>{{ t.Amount|currency }}</td>
+                    <td>{{ t.TransactionDate|datetime }}</td>
+                    <td>{{ t.ReferenceNumber or '-' }}</td>
+                    <td><span class="badge badge-{{ t.TransactionStatus|lower }}">{{ t.TransactionStatus|title }}</span></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="empty-state">No transactions found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

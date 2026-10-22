@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Loans - Project Kashi{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h1 class="page-title">Loan Management</h1><p class="page-subtitle">Applications, approvals, outstanding balances, and closures</p></div>
+    <div class="page-actions">
+        <a href="{{ url_for('loan_new') }}" class="btn btn-primary">New Loan Application</a>
+        <a href="{{ url_for('loan_payments') }}" class="btn btn-secondary">Record Payment</a>
+    </div>
+</div>
+
+<section class="panel">
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead><tr><th>ID</th><th>Customer</th><th>Branch</th><th>Type</th><th>Amount</th><th>Rate</th><th>Paid</th><th>Outstanding</th><th>Tenure</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>
+            {% for l in loans %}
+                <tr>
+                    <td>{{ l.LoanID }}</td>
+                    <td>{{ l.CustomerName }}</td>
+                    <td>{{ l.BranchName }}</td>
+                    <td>{{ l.LoanType }}</td>
+                    <td>{{ l.LoanAmount|currency }}</td>
+                    <td>{{ l.InterestRate }}%</td>
+                    <td>{{ l.TotalPaid|currency }}</td>
+                    <td>{{ l.OutstandingAmount|currency }}</td>
+                    <td>{{ l.TenureMonths }} mo</td>
+                    <td><span class="badge badge-{{ l.LoanStatus|lower }}">{{ l.LoanStatus }}</span></td>
+                    <td class="actions-cell">
+                        <a class="link" href="{{ url_for('loan_detail', loan_id=l.LoanID) }}">View</a>
+                        {% if l.LoanStatus == 'Pending' %}
+                        <form method="post" action="{{ url_for('loan_decision', loan_id=l.LoanID, decision='approve') }}" class="inline-form" data-confirm="Approve this loan?">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button class="btn btn-small btn-success" type="submit">Approve</button>
+                        </form>
+                        <form method="post" action="{{ url_for('loan_decision', loan_id=l.LoanID, decision='reject') }}" class="inline-form" data-confirm="Reject this loan?">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button class="btn btn-small btn-danger" type="submit">Reject</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="11" class="empty-state">No loan applications found.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

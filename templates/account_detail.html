@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Account {{ account.AccountNumber }} - Project Kashi{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Account {{ account.AccountNumber }}</h1>
+        <p class="page-subtitle">{{ account.AccountType }} account at {{ account.BranchName }}</p>
+    </div>
+    <div class="page-actions">
+        <a href="{{ url_for('accounts') }}" class="btn btn-secondary">Back to Accounts</a>
+        <a href="{{ url_for('deposit', account_id=account.AccountID) }}" class="btn btn-primary">Deposit</a>
+        <a href="{{ url_for('withdraw', account_id=account.AccountID) }}" class="btn btn-secondary">Withdraw</a>
+        <a href="{{ url_for('transfer', from_account=account.AccountID) }}" class="btn btn-secondary">Transfer</a>
+    </div>
+</div>
+
+<div class="stat-grid stat-grid-4">
+    <div class="stat-card"><div class="stat-label">Current Balance</div><div class="stat-value">{{ account.Balance|currency }}</div></div>
+    <div class="stat-card"><div class="stat-label">Status</div><div class="stat-value"><span class="badge badge-{{ account.Status|lower }}">{{ account.Status }}</span></div></div>
+    <div class="stat-card"><div class="stat-label">Branch</div><div class="stat-value stat-value-sm">{{ account.BranchName }}</div><div class="stat-foot">{{ account.IFSCCode }}</div></div>
+    <div class="stat-card"><div class="stat-label">Opened</div><div class="stat-value stat-value-sm">{{ account.OpeningDate|datetime }}</div></div>
+</div>
+
+<div class="grid-2">
+    <section class="panel">
+        <div class="panel-header"><h2 class="panel-title">Account Holders</h2></div>
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead><tr><th>Customer</th><th>Mobile</th><th>Holder Type</th><th>Since</th></tr></thead>
+                <tbody>
+                {% for h in holders %}
+                    <tr>
+                        <td><a class="link" href="{{ url_for('customer_detail', customer_id=h.CustomerID) }}">{{ h.FirstName }} {{ h.LastName }}</a></td>
+                        <td>{{ h.Mobile }}</td>
+                        <td>{{ h.HolderType }}</td>
+                        <td>{{ h.HolderSince|datetime }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="4" class="empty-state">No holder linked.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-header"><h2 class="panel-title">Change Account Status</h2></div>
+        <form method="post" action="{{ url_for('account_status', account_id=account.AccountID) }}" class="inline-form" data-confirm="Change the status of this account?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <select name="Status" class="input">
+                <option value="Active" {% if account.Status == 'Active' %}selected{% endif %}>Active</option>
+                <option value="Inactive" {% if account.Status == 'Inactive' %}selected{% endif %}>Inactive</option>
+                <option value="Closed" {% if account.Status == 'Closed' %}selected{% endif %}>Closed</option>
+            </select>
+            <button type="submit" class="btn btn-primary">Update Status</button>
+        </form>
+        <p class="form-help">A closed account cannot be reopened and must have a zero balance before closing.</p>
+    </section>
+</div>
+
+<section class="panel">
+    <div class="panel-header">
+        <h2 class="panel-title">Transaction History</h2>
+        <a href="{{ url_for('transactions', account_id=account.AccountID) }}" class="link">Open filtered view</a>
+    </div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead><tr><th>ID</th><th>Type</th><th>Amount</th><th>Date</th><th>Description</th><th>Reference</th><th>Transfer Group</th><th>Status</th></tr></thead>
+            <tbody>
+            {% for t in transactions %}
+                <tr>
+                    <td>{{ t.TransactionID }}</td>
+                    <td><span class="badge badge-{{ t.TransactionType|lower }}">{{ t.TransactionType.replace('_',' ') }}</span></td>
+                    <td>{{ t.Amount|currency }}</td>
+                    <td>{{ t.TransactionDate|datetime }}</td>
+                    <td>{{ t.Description or '-' }}</td>
+                    <td>{{ t.ReferenceNumber or '-' }}</td>
+                    <td>{{ t.TransferGroupReference or '-' }}</td>
+                    <td><span class="badge badge-{{ t.TransactionStatus|lower }}">{{ t.TransactionStatus|title }}</span></td>
+                </tr>
+            {% else %}
+                <tr><td colspan="8" class="empty-state">No transactions for this account.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

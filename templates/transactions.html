@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Transactions - Project Kashi{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Transaction History</h1>
+        <p class="page-subtitle">All financial movements recorded in BANK_TRANSACTION</p>
+    </div>
+    <div class="page-actions">
+        <a href="{{ url_for('deposit') }}" class="btn btn-primary">Deposit</a>
+        <a href="{{ url_for('withdraw') }}" class="btn btn-secondary">Withdraw</a>
+        <a href="{{ url_for('transfer') }}" class="btn btn-secondary">Transfer</a>
+    </div>
+</div>
+
+<section class="panel">
+    <div class="panel-header">
+        <form action="{{ url_for('transactions') }}" method="get" class="filter-form">
+            <select name="account_id" class="input">
+                <option value="">All accounts</option>
+                {% for a in accounts %}
+                <option value="{{ a.AccountID }}" {% if account_filter|int == a.AccountID %}selected{% endif %}>{{ a.AccountNumber }}</option>
+                {% endfor %}
+            </select>
+            <select name="type" class="input">
+                <option value="">All types</option>
+                {% for t in ['DEPOSIT','WITHDRAWAL','TRANSFER_IN','TRANSFER_OUT'] %}
+                <option value="{{ t }}" {% if type_filter == t %}selected{% endif %}>{{ t.replace('_',' ') }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-secondary">Filter</button>
+            <a href="{{ url_for('transactions') }}" class="link">Reset</a>
+        </form>
+    </div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead><tr><th>ID</th><th>Account</th><th>Branch</th><th>Type</th><th>Amount</th><th>Date</th><th>Description</th><th>Reference</th><th>Transfer Group</th><th>Status</th></tr></thead>
+            <tbody>
+            {% for t in transactions %}
+                <tr>
+                    <td>{{ t.TransactionID }}</td>
+                    <td><a class="link" href="{{ url_for('account_detail', account_id=t.AccountID) }}">{{ t.AccountNumber }}</a></td>
+                    <td>{{ t.BranchName }}</td>
+                    <td><span class="badge badge-{{ t.TransactionType|lower }}">{{ t.TransactionType.replace('_',' ') }}</span></td>
+                    <td>{{ t.Amount|currency }}</td>
+                    <td>{{ t.TransactionDate|datetime }}</td>
+                    <td>{{ t.Description or '-' }}</td>
+                    <td>{{ t.ReferenceNumber or '-' }}</td>
+                    <td>{{ t.TransferGroupReference or '-' }}</td>
+                    <td><span class="badge badge-{{ t.TransactionStatus|lower }}">{{ t.TransactionStatus|title }}</span></td>
+                </tr>
+            {% else %}
+                <tr><td colspan="10" class="empty-state">No transactions match the selected filters.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
