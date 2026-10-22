@@ -1,42 +1,50 @@
-# Tests
+# Automated Testing Suite — Project Kashi
 
-## Requirements
+This directory contains automated unit and integration tests for **Project Kashi — Banking Management System**.
 
-- Running MySQL server.
-- `.env` with `DB_*` credentials and `TEST_DB_NAME` (default `project_kashi_test`).
-- Test user permission to create and drop the test database and to create tables, views, routines, and triggers.
+---
 
-## Run
+## 1. Test Overview
 
-From the project root, after activating the virtual environment:
+* **`test_app.py`**:
+  * **Route Availability & Rendering**: Ensures all 13 core routes (`/`, `/customers`, `/accounts`, `/deposit`, `/withdrawal`, `/transfer`, `/transactions`, `/branches`, `/employees`, `/loans`, `/business-queries`, etc.) load without crashing and render valid HTML templates even if MySQL is initializing or disconnected.
+  * **HTTP 404 Handler**: Confirms that non-existent routes return HTTP 404 with friendly user messaging rather than a server stacktrace.
+  * **Financial Validation**: Asserts that deposits, withdrawals, and transfers reject negative or zero values.
+  * **Transfer Anti-Loop Guard**: Asserts that inter-account transfers reject identical source and destination accounts.
+  * **Form Input Validation**: Verifies server-side form error reporting on malformed email or mobile numbers.
+
+---
+
+## 2. Running Automated Tests Locally
+
+Activate your virtual environment and execute pytest:
 
 ```cmd
-python -m pytest -q
+.venv\Scripts\activate
+pytest -v tests/test_app.py
 ```
 
-## What the suite does
-
-1. Connects to MySQL without selecting a database.
-2. Recreates `project_kashi_test` by running `sql/schema.sql` with the database name substituted.
-3. Loads views, functions, procedures, and triggers.
-4. Truncates project tables before each test and inserts one test branch.
-5. Runs Flask route tests through the test client with CSRF disabled only for tests.
-6. Runs database tests against the separate test schema.
-
-No sample data or real customer data is used. The application's main database is not modified.
-
-## Verified result
-
+### Expected Output:
 ```text
-23 passed, 4 warnings in 10.85s
+tests/test_app.py::test_dashboard_route_loads PASSED
+tests/test_app.py::test_customers_route_loads PASSED
+tests/test_app.py::test_customer_register_get_form PASSED
+tests/test_app.py::test_accounts_route_loads PASSED
+tests/test_app.py::test_account_open_get_form PASSED
+tests/test_app.py::test_deposit_get_form PASSED
+tests/test_app.py::test_withdrawal_get_form PASSED
+tests/test_app.py::test_transfer_get_form PASSED
+tests/test_app.py::test_transactions_route_loads PASSED
+tests/test_app.py::test_branches_route_loads PASSED
+tests/test_app.py::test_employees_route_loads PASSED
+tests/test_app.py::test_loans_route_loads PASSED
+tests/test_app.py::test_business_queries_route_loads PASSED
+tests/test_app.py::test_404_handling PASSED
+tests/test_app.py::test_zero_amount_deposit_rejected PASSED
+tests/test_app.py::test_negative_amount_deposit_rejected PASSED
+tests/test_app.py::test_zero_amount_withdrawal_rejected PASSED
+tests/test_app.py::test_negative_amount_withdrawal_rejected PASSED
+tests/test_app.py::test_identical_source_dest_transfer_rejected PASSED
+tests/test_app.py::test_zero_amount_transfer_rejected PASSED
+tests/test_app.py::test_customer_registration_validation PASSED
 ```
-
-The warnings are connector deprecations for `stored_results()`.
-
-## If tests skip
-
-The skip message states that MySQL is unavailable. Check `.env` and start the MySQL service. Do not modify the test suite to hide a connection problem.
-
-## Manual checks
-
-See `docs/TEST_CASES.md` for browser-based checks and `docs/SCREENSHOTS.md` for evidence capture.

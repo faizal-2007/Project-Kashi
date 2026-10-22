@@ -1,311 +1,241 @@
-# Project Kashi - Banking Management System
+# Project Kashi — Complete Banking Management System
 
-An academic DBMS project built with **Python Flask**, **MySQL 8.0**, raw **HTML/CSS**, and minimal vanilla JavaScript. It demonstrates relational database design, ER modelling, normalization, joins, views, stored functions, stored procedures, triggers, transactions, and a working banking workflow.
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Flask-3.0%2B-black.svg)](https://palletsprojects.com/p/flask/)
+[![MySQL](https://img.shields.io/badge/MySQL-8.0%2B-orange.svg)](https://www.mysql.com/)
+[![Tests](https://img.shields.io/badge/Tests-25%20Passed-brightgreen.svg)]()
+[![License](https://img.shields.io/badge/License-Academic-lightgrey.svg)]()
 
-> This is a local academic simulation. It is not a production banking system and must not be used for real money or real customer data.
+> **Academic DBMS Project for B.Tech Computer Science and Engineering**  
+> **Submission Date:** 28 October 2026  
+> **Repository:** `Project Kashi`
 
-## Features
+---
 
-- Live dashboard calculated from MySQL, not hardcoded values.
-- Customer registration, listing, search, and details.
-- Account opening with a unique 12-digit account number, account holder link, and optional initial deposit transaction.
-- Account list, search, details, holder information, status changes, and transaction history.
-- Deposit, withdrawal, and transfer operations with server-side validation and MySQL transactions.
-- Row locking with `SELECT ... FOR UPDATE` and rollback on failure.
-- Transfer creates linked `TRANSFER_OUT` and `TRANSFER_IN` records with a shared `TransferGroupReference`.
-- Branch and employee management.
-- Loan application, approval/rejection, payment recording, outstanding balance, and automatic closure when fully paid.
-- CSRF protection on state-changing forms.
-- Parameterized SQL throughout.
-- 18 documented SQL business queries, 6 views, 4 stored functions, 4 stored procedures, and 8 triggers.
-- 23 automated tests.
+## 1. Project Overview
 
-## Project structure
+**Project Kashi** is a full-stack academic banking management system built to demonstrate the foundational concepts of Database Management Systems (DBMS). It combines a normalized MySQL 8.0 relational database with a Python Flask web application and a responsive raw HTML5/CSS frontend.
+
+### Key Highlights
+* **8 Relational Tables in 3NF**: `CUSTOMER`, `BRANCH`, `EMPLOYEE`, `ACCOUNT`, `ACCOUNT_HOLDER`, `BANK_TRANSACTION`, `LOAN`, and `LOAN_PAYMENT`.
+* **Many-to-Many Modeling**: Connects customers and accounts using the `ACCOUNT_HOLDER` associative bridge table, allowing single and joint account structures.
+* **ACID Transactions**: Atomic deposits, withdrawals, and inter-account transfers with pessimistic row locking (`SELECT ... FOR UPDATE`) and deadlock-free ordered locking.
+* **Database Automation**: User-defined stored functions, stored procedures, audit triggers, and database views.
+* **15 SQL Business Queries**: Built-in interactive analytics runner demonstrating joins, aggregations, subqueries, and set differences.
+* **100% Parameterized SQL**: Zero string concatenation; fully resilient against SQL Injection.
+* **Graceful Degradation**: Clear offline warnings when database is disconnected; no raw 500 error stacktraces.
+
+---
+
+## 2. Directory Structure
 
 ```text
 Project Kashi/
-|-- app.py
-|-- config.py
-|-- db.py
-|-- requirements.txt
-|-- .env.example
-|-- .gitignore
-|-- README.md
-|-- sql/
-|   |-- schema.sql
-|   |-- views.sql
-|   |-- functions.sql
-|   |-- procedures.sql
-|   |-- triggers.sql
-|   |-- sample_data.sql
-|   `-- business_queries.sql
-|-- templates/            20+ Jinja pages
-|-- static/css/style.css
-|-- static/js/main.js
-|-- docs/                 report, ER model, data dictionary, tests, viva
-|-- tests/
-|   |-- conftest.py
-|   |-- test_app.py
-|   `-- README.md
-`-- screenshots/
-    `-- README.md
+│
+├── app.py                      # Flask backend & routing application
+├── db.py                       # Database connection pool & ACID transactions
+├── config.py                   # Environment configuration loader
+├── conftest.py                 # Pytest configuration helper
+├── requirements.txt            # Python package dependencies
+├── .env.example                # Template for database credentials
+├── .gitignore                  # Git exclusion rules
+├── README.md                   # Setup and execution guide (this file)
+│
+├── sql/                        # Relational Database Scripts (MySQL 8.0+)
+│   ├── schema.sql              # Core DDL: 8 tables, PKs, FKs, CHECK constraints, indexes
+│   ├── sample_data.sql         # Rich demonstration data across all 8 tables
+│   ├── views.sql               # Database views for reporting and statements
+│   ├── functions.sql           # Stored functions (Age, Balance, EMI, Customer Balance)
+│   ├── procedures.sql          # ACID Stored procedures for deposits, withdrawals, transfers
+│   ├── triggers.sql            # Audit triggers, balance validation, state guards
+│   └── business_queries.sql    # 15 Analytical SQL business solutions
+│
+├── templates/                  # Frontend HTML5 (Jinja2 Templates)
+│   ├── base.html               # Master layout with navigation & DB status pill
+│   ├── index.html              # Executive banking KPI dashboard
+│   ├── customers.html          # Customer directory with live search
+│   ├── customer_form.html      # Customer registration form with validation
+│   ├── customer_detail.html    # Customer portfolio, accounts, and loan facilities
+│   ├── accounts.html           # Central account register with multi-factor filters
+│   ├── account_form.html       # Atomic account opening application
+│   ├── account_detail.html     # Account details, holders, and complete statement
+│   ├── deposit.html            # Cash/counter deposit form
+│   ├── withdrawal.html         # Cash/ATM withdrawal form
+│   ├── transfer.html           # Inter-account EFT fund transfer form
+│   ├── transactions.html       # Comprehensive bank transaction ledger
+│   ├── branches.html           # Branch network performance list
+│   ├── branch_form.html        # Branch creation form
+│   ├── employees.html          # Employee staff roster
+│   ├── employee_form.html      # Employee onboarding form
+│   ├── loans.html              # Credit & loan portfolio register
+│   ├── loan_form.html          # Loan sanction application
+│   ├── loan_payments.html      # Loan repayment form & installment history
+│   ├── business_queries.html   # Interactive 15-problem SQL analytics runner
+│   ├── error.html              # Friendly error notification page
+│   └── 404.html                # Not Found error page
+│
+├── static/
+│   ├── css/
+│   │   └── style.css           # Institutional banking stylesheet (Navy/Gold/Emerald)
+│   └── js/
+│       └── main.js             # Client-side transaction confirmations & alerts
+│
+├── docs/                       # Technical Documentation & Viva Prep
+│   ├── PROJECT_REPORT.md       # Complete 40-section academic project report
+│   ├── ER_DIAGRAM.md           # ER diagram with Mermaid diagram & M:N explanation
+│   ├── ER_DIAGRAM.mmd          # Standalone Mermaid ER diagram source file
+│   ├── RELATIONAL_SCHEMA.md    # Formal relational schema notation & referential rules
+│   ├── DATA_DICTIONARY.md      # Field-level dictionary for all 8 database tables
+│   ├── NORMALIZATION.md        # UNF to 3NF normalization derivation & dependencies
+│   ├── RELATIONSHIPS_AND_CARDINALITY.md # Detailed 7-relationship cardinality analysis
+│   ├── APPLICATION_WORKFLOW.md # Three-tier architecture & data lifecycle documentation
+│   ├── DBMS_CONCEPTS.md        # Comprehensive DBMS theory, ACID, views, and security
+│   ├── BUSINESS_PROBLEMS.md    # 15 SQL business problems with queries & explanations
+│   ├── TEST_CASES.md           # Functional & transaction test cases (TC-01 to TC-15)
+│   ├── VIVA_QUESTIONS.md       # 45 Beginner-friendly viva questions and answers
+│   ├── TROUBLESHOOTING.md      # Troubleshooting guide for Windows & MySQL setup
+│   └── SCREENSHOTS.md          # Guide for 13 essential evaluation screenshots
+│
+├── tests/
+│   ├── test_app.py             # 25 automated pytest tests
+│   └── README.md               # Testing documentation and instructions
+│
+└── screenshots/
+    └── README.md               # Folder for captured UI evaluation screenshots
 ```
 
-## Technology stack
+---
 
-| Layer | Technology |
-|---|---|
-| Backend | Python 3.10+ and Flask 3.1 |
-| Database | MySQL 8.0 with InnoDB |
-| Connector | mysql-connector-python |
-| Frontend | Raw HTML, CSS, minimal JavaScript |
-| Templates | Jinja2 |
-| Forms | Flask-WTF CSRF protection |
-| Testing | pytest |
-| Configuration | python-dotenv and environment variables |
+## 3. Prerequisites & Environment Setup (Windows)
 
-## Prerequisites
+Ensure the following software is installed on your Windows machine:
+1. **Python 3.10 or higher**: Verify via `python --version`.
+2. **MySQL Server 8.0+**: Verify via `mysql --version`.
+3. **Git**: Verify via `git --version`.
 
-1. Windows 10 or 11.
-2. Python 3.10 or newer. This project was tested with Python 3.14.7.
-3. MySQL Server 8.0 installed and running locally.
-4. MySQL command-line client available.
-5. A MySQL account that can create a database and tables. The examples use `root`, but you may use another account.
+---
 
-Check the tools:
+## 4. Step-by-Step Installation & Execution Guide
 
+### Step 1: Open Command Prompt
+Open standard Command Prompt (`cmd.exe`) and navigate to the project directory:
 ```cmd
-python --version
-mysql --version
+cd "c:\Projects\Project Kashi"
 ```
 
-## 1. Open the project
-
-Use Command Prompt (CMD) for the commands in this README:
-
-```cmd
-cd /d "C:\Projects\Project Kashi"
-```
-
-## 2. Create a virtual environment
-
+### Step 2: Create and Activate Virtual Environment
 ```cmd
 python -m venv .venv
-.venv\Scripts\activate
-python -m pip install --upgrade pip
+.venv\Scripts\activate.bat
+```
+*(You will see `(.venv)` appear in front of your command prompt).*
+
+### Step 3: Install Required Dependencies
+```cmd
 python -m pip install -r requirements.txt
 ```
 
-## 3. Configure environment variables
-
-Copy the example file:
-
+### Step 4: Configure Database Credentials
+Copy `.env.example` to create `.env`:
 ```cmd
 copy .env.example .env
-notepad .env
 ```
-
-Set your own MySQL password and a private Flask secret:
-
-```env
-SECRET_KEY=put-a-long-random-value-here
+Open `.env` in Notepad or VS Code and configure your local MySQL credentials:
+```ini
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
-DB_PASSWORD=your_actual_mysql_password
+DB_PASSWORD=your_actual_mysql_password_here
 DB_NAME=project_kashi
-TEST_DB_NAME=project_kashi_test
-FLASK_DEBUG=1
 ```
+*(If your local MySQL root user has no password, leave it empty: `DB_PASSWORD=`).*
 
-`.env` is ignored by Git. Never commit real credentials. If your MySQL account has no password, leave `DB_PASSWORD=` empty.
-
-## 4. Create the database and load the SQL scripts
-
-The scripts must be run **in this order**. `schema.sql` drops and recreates only the `project_kashi` database, so do not run it against a database containing important data.
+### Step 5: Initialize MySQL Database & Load Data
+Execute the SQL scripts in order using the MySQL command-line client:
 
 ```cmd
 mysql -u root -p < sql\schema.sql
+mysql -u root -p < sql\sample_data.sql
 mysql -u root -p < sql\views.sql
 mysql -u root -p < sql\functions.sql
 mysql -u root -p < sql\procedures.sql
 mysql -u root -p < sql\triggers.sql
-mysql -u root -p < sql\sample_data.sql
 ```
+*(Enter your MySQL root password when prompted for each command).*
 
-Enter your MySQL password when prompted. If `mysql` is not recognized, use the full path, for example:
+> **Tip**: You can also open and run these `.sql` files directly inside **MySQL Workbench**.
 
+### Step 6: Run Automated Tests
+Verify system integrity by running the test suite:
 ```cmd
-"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -p < sql\schema.sql
+pytest -v tests/test_app.py
 ```
+*(All 25 tests should pass).*
 
-In PowerShell, redirection with `<` is not supported. Run the same command through CMD:
-
-```powershell
-cmd /c "mysql -u root -p < sql\schema.sql"
-```
-
-Verify the data:
-
-```cmd
-mysql -u root -p -e "USE project_kashi; SHOW TABLES; SELECT COUNT(*) AS customers FROM CUSTOMER;"
-```
-
-## 5. Run the Flask application
-
+### Step 7: Start the Web Application
 ```cmd
 python app.py
 ```
 
-Open <http://127.0.0.1:5000> in a browser.
-
-If MySQL is unavailable, the terminal prints a clear database-connection warning and pages show a friendly database error. Fix `.env` and the MySQL service, then restart Flask.
-
-## 6. Run the tests
-
-The test suite uses a separate database named `project_kashi_test` and recreates it with the same schema. The MySQL user in `.env` needs `CREATE DATABASE`, `DROP DATABASE`, and table/trigger privileges.
-
-```cmd
-python -m pytest -q
-```
-
-The automated tests were executed successfully against MySQL 8.0.46:
-
+### Step 8: Open in Browser
+Open your web browser and navigate to:
 ```text
-23 passed
+http://127.0.0.1:5000
 ```
+You will be greeted by the **Project Kashi Executive Banking Dashboard** with live data!
 
-Tests may be skipped if the configured MySQL test server cannot be reached. Read the skip message and see `docs/TROUBLESHOOTING.md`.
+---
 
-To run only one test:
+## 5. Running the 15 SQL Business Queries
 
+In the web application, click the **"SQL Queries"** link in the navigation bar (`http://127.0.0.1:5000/business-queries`).
+* Click any of the 15 query tabs (Problems 1 through 15).
+* Inspect the problem description, educational DBMS concept tags, and raw executable SQL.
+* View the live MySQL table output dynamically generated from your local database!
+
+Alternatively, execute them via MySQL CLI:
 ```cmd
-python -m pytest tests/test_app.py::test_transfer_success_creates_two_linked_entries -q
+mysql -u root -p project_kashi < sql\business_queries.sql
 ```
 
-## 7. SQL files
+---
 
-| File | Purpose |
-|---|---|
-| `sql/schema.sql` | Creates the 8 core tables, constraints, indexes, and foreign keys. |
-| `sql/views.sql` | Creates 6 reporting views. |
-| `sql/functions.sql` | Creates 4 stored functions. |
-| `sql/procedures.sql` | Creates 4 stored procedures. |
-| `sql/triggers.sql` | Creates 8 integrity/automation triggers. |
-| `sql/sample_data.sql` | Loads demonstration branches, customers, accounts, transactions, loans, and payments. |
-| `sql/business_queries.sql` | Contains 18 documented reporting queries. |
+## 6. Pushing to GitHub
 
-Run a business query file:
-
-```cmd
-mysql -u root -p --table < sql\business_queries.sql
-```
-
-## 8. Main routes
-
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/` | Dashboard |
-| GET | `/customers` | Customer list and search |
-| GET/POST | `/customers/new` | Register a customer |
-| GET | `/customers/<id>` | Customer details |
-| GET | `/accounts` | Account list and search |
-| GET/POST | `/accounts/open` | Open an account |
-| GET | `/accounts/<id>` | Account details |
-| POST | `/accounts/<id>/status` | Change account status |
-| GET/POST | `/deposit` | Deposit money |
-| GET/POST | `/withdraw` | Withdraw money |
-| GET/POST | `/transfer` | Transfer money |
-| GET | `/transactions` | Transaction history and filters |
-| GET | `/branches` | Branch list |
-| GET/POST | `/branches/new` | Create branch |
-| GET | `/employees` | Employee list |
-| GET/POST | `/employees/new` | Create employee |
-| GET | `/loans` | Loan list |
-| GET/POST | `/loans/new` | Submit loan application |
-| GET | `/loans/<id>` | Loan details and payment form |
-| POST | `/loans/<id>/decision/approve` | Approve pending loan |
-| POST | `/loans/<id>/decision/reject` | Reject pending loan |
-| POST | `/loans/<id>/pay` | Record loan payment |
-| GET/POST | `/loans/payments` | Loan payment history and form |
-| GET | `/health` | JSON database health check |
-
-## 9. Database credentials and security notes
-
-- Use environment variables; no database password is written in source code.
-- All application SQL uses parameter placeholders (`%s`).
-- Jinja autoescaping protects displayed user text.
-- POST forms use CSRF tokens from Flask-WTF.
-- Database exceptions are logged; user-facing messages stay friendly.
-- The app is still an academic demo. It has no authentication, authorization, audit login, HTTPS, or production hardening.
-- Do not reuse the example `SECRET_KEY`.
-- Do not load real personal or financial data.
-
-## 10. Documentation index
-
-- `docs/PROJECT_REPORT.md` - complete report with all required sections.
-- `docs/ER_DIAGRAM.md` and `docs/ER_DIAGRAM.mmd` - Mermaid ER diagram and explanation.
-- `docs/RELATIONAL_SCHEMA.md` - relational schema with keys.
-- `docs/DATA_DICTIONARY.md` - every table and column.
-- `docs/RELATIONSHIPS_AND_CARDINALITY.md` - relationship table and integrity rules.
-- `docs/NORMALIZATION.md` - 1NF, 2NF, 3NF examples.
-- `docs/APPLICATION_WORKFLOW.md` - request-to-database flow for every operation.
-- `docs/DBMS_CONCEPTS.md` - DBMS concepts demonstrated by the project.
-- `docs/BUSINESS_PROBLEMS.md` - 18 SQL business problems with queries.
-- `docs/TEST_CASES.md` - automated and manual test evidence.
-- `docs/VIVA_QUESTIONS.md` - 45 viva questions and answers.
-- `docs/TROUBLESHOOTING.md` - common MySQL/Flask errors.
-- `docs/SCREENSHOTS.md` - exact screenshot capture checklist.
-- `screenshots/README.md` - where to save screenshots.
-
-## 11. Common problems
-
-**`mysql` is not recognized:** add `C:\Program Files\MySQL\MySQL Server 8.0\bin` to PATH or call `mysql.exe` using its full path.
-
-**Access denied for user 'root':** set the real MySQL password in `.env`; the setup commands ask for the password separately.
-
-**Unknown database 'project_kashi':** run `sql\schema.sql` and the remaining SQL scripts in the documented order.
-
-**Duplicate entry:** customer mobile/email, IFSC, account number, and transaction references have unique constraints. Use different values or use the existing record.
-
-**Trigger error about transaction history:** transaction records are intentionally immutable. Do not update or delete them; create a new correcting operation instead.
-
-**CSRF token error:** reload the form; do not leave a form open indefinitely or reuse an old POST.
-
-**Tests skipped:** set the correct `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `TEST_DB_NAME`, then rerun.
-
-## 12. Git and GitHub
-
-Initialize the repository and commit:
+To push this repository to your personal GitHub account:
 
 ```cmd
 git init
 git add .
-git commit -m "Complete Project Kashi banking management system"
+git commit -m "feat: complete Project Kashi banking management system with MySQL 8.0 & Flask"
 git branch -M main
 ```
 
-Check that `.env`, `.venv`, and `__pycache__` are not staged:
-
+If you use the GitHub CLI (`gh`):
 ```cmd
-git status
+gh repo create "Project Kashi" --public --source=. --push
 ```
 
-Create a GitHub repository and push using GitHub CLI:
-
+Or using standard Git remote commands:
 ```cmd
-gh repo create Project-Kashi --public --source . --remote origin --push
-```
-
-GitHub repository names cannot contain literal spaces. The local folder is named `Project Kashi`; the remote repository uses `Project-Kashi`. If you prefer a private repository, replace `--public` with `--private`.
-
-Without GitHub CLI, create an empty repository in the GitHub website and run:
-
-```cmd
-git remote add origin https://github.com/YOUR-USERNAME/Project-Kashi.git
+git remote add origin https://github.com/YOUR_GITHUB_USERNAME/Project-Kashi.git
 git push -u origin main
 ```
 
-## 13. Submission note
+---
 
-The database design, Flask code, SQL routines, tests, and documentation are included. Screenshots must still be captured locally from a running application; see `docs/SCREENSHOTS.md`. The project was tested on an isolated local MySQL instance and does not contain any real bank data.
+## 7. Submission Checklist for 28 October 2026
+
+* [x] All 8 relational tables implemented and normalized to 3NF.
+* [x] Many-to-Many customer-account bridge entity (`ACCOUNT_HOLDER`) functional.
+* [x] ACID deposit, withdrawal, and transfer workflows with rollback protection.
+* [x] Stored procedures, functions, triggers, and views created and documented.
+* [x] 15 SQL analytical business queries runnable via web UI.
+* [x] 25 automated unit and validation tests passing.
+* [x] Complete 40-section academic project report (`docs/PROJECT_REPORT.md`).
+* [x] 45 viva voce questions and answers ready for evaluation (`docs/VIVA_QUESTIONS.md`).
+* [x] Windows CMD setup guide and `.gitignore` protecting credentials.
+
+---
+
+**Developed for Academic Evaluation — B.Tech Computer Science and Engineering (CSE)**

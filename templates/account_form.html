@@ -1,63 +1,77 @@
 {% extends "base.html" %}
-{% block title %}Open Account - Project Kashi{% endblock %}
+
+{% block title %}Open New Account — Project Kashi{% endblock %}
 
 {% block content %}
 <div class="page-header">
     <div>
-        <h1 class="page-title">Account Opening</h1>
-        <p class="page-subtitle">Create ACCOUNT and ACCOUNT_HOLDER entries atomically</p>
+        <h2 class="page-title">Open New Bank Account</h2>
+        <p class="page-subtitle">Atomic transaction: initializes account, assigns ownership, and registers initial opening deposit</p>
     </div>
-    <div class="page-actions">
-        <a href="{{ url_for('accounts') }}" class="btn btn-secondary">Back to Accounts</a>
-    </div>
+    <a href="{{ url_for('account_list') }}" class="btn btn-secondary">&larr; Back to Accounts</a>
 </div>
 
-<section class="panel form-panel">
-    <form method="post" action="{{ url_for('account_open') }}" class="form-grid">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="form-group form-group-full">
-            <label for="CustomerID">Select Customer</label>
-            <select id="CustomerID" name="CustomerID" required class="input">
-                <option value="">-- Choose Customer --</option>
-                {% for c in customers %}
-                <option value="{{ c.CustomerID }}">{{ c.CustomerID }} - {{ c.FirstName }} {{ c.LastName }} ({{ c.Mobile }})</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="form-group">
-            <label for="AccountType">Account Type</label>
-            <select id="AccountType" name="AccountType" required class="input">
-                <option value="">Select</option>
-                <option value="Saving">Saving</option>
-                <option value="Current">Current</option>
-                <option value="Salary">Salary</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label for="BranchID">Branch</label>
-            <select id="BranchID" name="BranchID" required class="input">
-                <option value="">Select Branch</option>
-                {% for b in branches %}
-                <option value="{{ b.BranchID }}">{{ b.BranchName }} - {{ b.City }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="form-group">
-            <label for="HolderType">Holder Type</label>
-            <select id="HolderType" name="HolderType" class="input">
-                <option value="Primary">Primary</option>
-                <option value="Joint">Joint</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label for="InitialDeposit">Initial Deposit (₹)</label>
-            <input type="number" step="0.01" min="0" id="InitialDeposit" name="InitialDeposit" value="0" class="input">
-            <small class="form-help">If &gt; 0, a DEPOSIT transaction will be recorded.</small>
-        </div>
-        <div class="form-actions">
-            <button type="submit" class="btn btn-primary">Open Account</button>
-            <button type="reset" class="btn btn-secondary">Clear</button>
-        </div>
-    </form>
-</section>
+<div class="card" style="max-width: 750px; margin: 0 auto;">
+    <div class="card-header">
+        <h3>Account Opening Application</h3>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('account_open') }}">
+            <div class="form-grid">
+                <div class="form-group full-width">
+                    <label class="form-label" for="customer_id">Primary Customer *</label>
+                    <select id="customer_id" name="customer_id" class="form-control" required>
+                        <option value="">-- Choose Existing Customer --</option>
+                        {% for c in customers %}
+                            <option value="{{ c.CustomerID }}" {% if preselected_customer == c.CustomerID %}selected{% endif %}>
+                                #{{ c.CustomerID }} — {{ c.FirstName }} {{ c.LastName }} (Mobile: {{ c.Mobile }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <p class="form-help">Need a new customer? <a href="{{ url_for('customer_register') }}">Register customer first &rarr;</a></p>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="branch_id">Bank Branch *</label>
+                    <select id="branch_id" name="branch_id" class="form-control" required>
+                        <option value="">-- Select Branch --</option>
+                        {% for b in branches %}
+                            <option value="{{ b.BranchID }}">
+                                {{ b.BranchName }} ({{ b.IFSCCode }} - {{ b.City }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="account_type">Account Type *</label>
+                    <select id="account_type" name="account_type" class="form-control" required>
+                        <option value="Saving">Saving Account</option>
+                        <option value="Current">Current Account</option>
+                        <option value="Salary">Salary Account</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="holder_type">Holder Role *</label>
+                    <select id="holder_type" name="holder_type" class="form-control" required>
+                        <option value="Primary" selected>Primary Account Holder</option>
+                        <option value="Joint">Joint Account Holder</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="opening_balance">Initial Opening Deposit (₹)</label>
+                    <input type="number" id="opening_balance" name="opening_balance" class="form-control" min="0" step="0.01" value="1000.00" required>
+                    <p class="form-help">Zero balance opening supported. Any positive amount triggers an automatic DEPOSIT transaction.</p>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Open Account (Execute Transaction)</button>
+                <a href="{{ url_for('account_list') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}

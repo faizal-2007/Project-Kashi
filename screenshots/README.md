@@ -1,23 +1,20 @@
-# Screenshots
+# Screenshots Directory — Project Kashi
 
-This directory is intentionally empty of images at submission preparation time. No browser screenshots were captured in the build environment, and fake images are not included.
+This folder holds screenshot artifacts demonstrating the live functioning of **Project Kashi — Banking Management System**.
 
-Capture genuine screenshots from the running application and save them here using the names in `docs/SCREENSHOTS.md`:
+Please refer to [`docs/SCREENSHOTS.md`](../docs/SCREENSHOTS.md) for the complete list of 13 recommended screenshots and naming conventions.
 
-- `01-dashboard.png`
-- `02-customer-registration.png`
-- `03-customer-list.png`
-- `04-account-opening.png`
-- `05-account-detail.png`
-- `06-deposit-result.png`
-- `07-withdrawal-result.png`
-- `08-transfer-result.png`
-- `09-transaction-history.png`
-- `10-mysql-tables.png`
-- `11-er-diagram.png`
-- `12-sql-query-output.png`
-- `13-trigger-example.png`
-- `14-loan-workflow.png`
-- `15-branch-employee.png`
-
-Recommended source image dimensions: 1440x900 or higher. Avoid exposing real passwords, API keys, or personal data.
+### File Naming Convention:
+* `01_dashboard.png`
+* `02_customer_registration.png`
+* `03_customer_directory.png`
+* `04_customer_portfolio.png`
+* `05_account_opening.png`
+* `06_accounts_register.png`
+* `07_deposit_operation.png`
+* `08_withdrawal_operation.png`
+* `09_transfer_operation.png`
+* `10_transactions_ledger.png`
+* `11_sql_business_analytics.png`
+* `12_loan_management.png`
+* `13_mysql_cli_tables.png`

@@ -1,162 +1,125 @@
--- Project Kashi - database triggers
+-- ============================================================================
+-- PROJECT KASHI — BANKING MANAGEMENT SYSTEM
+-- Script: triggers.sql
+-- Purpose: Database Triggers for Integrity Enforcement, Invariants, and Auditing
+-- Database: project_kashi
+-- ============================================================================
+
 USE project_kashi;
 
-DROP TRIGGER IF EXISTS trg_account_status_before_update;
-DROP TRIGGER IF EXISTS trg_account_holder_primary_before_insert;
-DROP TRIGGER IF EXISTS trg_account_holder_primary_before_update;
-DROP TRIGGER IF EXISTS trg_transaction_before_insert;
-DROP TRIGGER IF EXISTS trg_transaction_prevent_update;
-DROP TRIGGER IF EXISTS trg_transaction_prevent_delete;
-DROP TRIGGER IF EXISTS trg_loan_payment_before_insert;
-DROP TRIGGER IF EXISTS trg_loan_payment_after_insert;
+-- ----------------------------------------------------------------------------
+-- AUDIT TABLE: ACCOUNT_AUDIT
+-- Purpose: Stores audit logs whenever an account status or key detail is modified.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ACCOUNT_AUDIT (
+    AuditID INT AUTO_INCREMENT PRIMARY KEY,
+    AccountID INT NOT NULL,
+    OldStatus VARCHAR(20) NULL,
+    NewStatus VARCHAR(20) NULL,
+    OldBalance DECIMAL(15, 2) NULL,
+    NewBalance DECIMAL(15, 2) NULL,
+    ChangedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ActionType VARCHAR(50) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+DROP TRIGGER IF EXISTS trg_validate_transaction_before_insert;
+DROP TRIGGER IF EXISTS trg_prevent_negative_balance_before_update;
+DROP TRIGGER IF EXISTS trg_audit_account_update;
+DROP TRIGGER IF EXISTS trg_prevent_loan_amount_mutation;
 
 DELIMITER $$
 
-CREATE TRIGGER trg_account_status_before_update
-BEFORE UPDATE ON ACCOUNT
-FOR EACH ROW
-BEGIN
-    IF OLD.Status = 'Closed' AND NEW.Status <> 'Closed' THEN
-        SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'A closed account cannot be reopened.';
-    END IF;
-
-    IF NEW.Status = 'Closed' AND NEW.Balance <> 0 THEN
-        SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'An account can be closed only when its balance is zero.';
-    END IF;
-END$$
-
-CREATE TRIGGER trg_account_holder_primary_before_insert
-BEFORE INSERT ON ACCOUNT_HOLDER
-FOR EACH ROW
-BEGIN
-    DECLARE v_primary_count INT;
-
-    IF NEW.HolderType = 'Primary' THEN
-        SELECT COUNT(*)
-          INTO v_primary_count
-          FROM ACCOUNT_HOLDER
-         WHERE AccountID = NEW.AccountID
-           AND HolderType = 'Primary';
-
-        IF v_primary_count > 0 THEN
-            SIGNAL SQLSTATE '45000'
-                SET MESSAGE_TEXT = 'An account can have only one primary holder.';
-        END IF;
-    END IF;
-END$$
-
-CREATE TRIGGER trg_account_holder_primary_before_update
-BEFORE UPDATE ON ACCOUNT_HOLDER
-FOR EACH ROW
-BEGIN
-    DECLARE v_primary_count INT;
-
-    IF NEW.HolderType = 'Primary' AND OLD.HolderType <> 'Primary' THEN
-        SELECT COUNT(*)
-          INTO v_primary_count
-          FROM ACCOUNT_HOLDER
-         WHERE AccountID = NEW.AccountID
-           AND HolderType = 'Primary'
-           AND NOT (CustomerID = OLD.CustomerID AND AccountID = OLD.AccountID);
-
-        IF v_primary_count > 0 THEN
-            SIGNAL SQLSTATE '45000'
-                SET MESSAGE_TEXT = 'An account can have only one primary holder.';
-        END IF;
-    END IF;
-END$$
-
-CREATE TRIGGER trg_transaction_before_insert
+-- ----------------------------------------------------------------------------
+-- TRIGGER 1: trg_validate_transaction_before_insert
+-- Timing: BEFORE INSERT ON BANK_TRANSACTION
+-- Purpose: Enforces financial safety invariants at the database level.
+-- Rejects transactions on non-active accounts or with non-positive amounts.
+-- ----------------------------------------------------------------------------
+CREATE TRIGGER trg_validate_transaction_before_insert
 BEFORE INSERT ON BANK_TRANSACTION
 FOR EACH ROW
 BEGIN
-    DECLARE v_account_status VARCHAR(20);
+    DECLARE v_acc_status ENUM('Active', 'Inactive', 'Closed');
 
-    SELECT Status
-      INTO v_account_status
-      FROM ACCOUNT
-     WHERE AccountID = NEW.AccountID;
-
-    IF v_account_status <> 'Active' THEN
+    -- Validate positive amount
+    IF NEW.Amount <= 0.00 THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Transactions are allowed only on active accounts.';
+            SET MESSAGE_TEXT = 'Integrity Violation: Transaction amount must be strictly greater than zero.';
+    END IF;
+
+    -- Retrieve linked account status
+    SELECT Status INTO v_acc_status
+    FROM ACCOUNT
+    WHERE AccountID = NEW.AccountID;
+
+    IF v_acc_status IS NULL THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Integrity Violation: Referenced AccountID does not exist.';
+    END IF;
+
+    IF v_acc_status != 'Active' THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Integrity Violation: Cannot execute transactions against an Inactive or Closed account.';
     END IF;
 END$$
 
-CREATE TRIGGER trg_transaction_prevent_update
-BEFORE UPDATE ON BANK_TRANSACTION
+-- ----------------------------------------------------------------------------
+-- TRIGGER 2: trg_prevent_negative_balance_before_update
+-- Timing: BEFORE UPDATE ON ACCOUNT
+-- Purpose: Mathematical guard guaranteeing an account balance can never drop
+-- below zero, even if an external application bug attempts it.
+-- ----------------------------------------------------------------------------
+CREATE TRIGGER trg_prevent_negative_balance_before_update
+BEFORE UPDATE ON ACCOUNT
 FOR EACH ROW
 BEGIN
-    SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'Transaction history is immutable and cannot be updated.';
-END$$
-
-CREATE TRIGGER trg_transaction_prevent_delete
-BEFORE DELETE ON BANK_TRANSACTION
-FOR EACH ROW
-BEGIN
-    SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'Transaction history is immutable and cannot be deleted.';
-END$$
-
-CREATE TRIGGER trg_loan_payment_before_insert
-BEFORE INSERT ON LOAN_PAYMENT
-FOR EACH ROW
-BEGIN
-    DECLARE v_status VARCHAR(20);
-    DECLARE v_outstanding DECIMAL(15,2);
-
-    SELECT LoanStatus
-      INTO v_status
-      FROM LOAN
-     WHERE LoanID = NEW.LoanID;
-
-    SELECT GREATEST(
-               l.LoanAmount - COALESCE(
-                   (SELECT SUM(lp.Amount) FROM LOAN_PAYMENT lp WHERE lp.LoanID = l.LoanID),
-                   0
-               ),
-               0
-           )
-      INTO v_outstanding
-      FROM LOAN l
-     WHERE l.LoanID = NEW.LoanID;
-
-    IF v_status <> 'Approved' THEN
+    IF NEW.Balance < 0.00 THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Loan payments are allowed only for approved loans.';
-    END IF;
-
-    IF NEW.Amount > v_outstanding THEN
-        SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Loan payment exceeds the outstanding loan amount.';
+            SET MESSAGE_TEXT = 'Integrity Violation: Account balance cannot become negative.';
     END IF;
 END$$
 
-CREATE TRIGGER trg_loan_payment_after_insert
-AFTER INSERT ON LOAN_PAYMENT
+-- ----------------------------------------------------------------------------
+-- TRIGGER 3: trg_audit_account_update
+-- Timing: AFTER UPDATE ON ACCOUNT
+-- Purpose: Automatically logs status changes or balance modifications to an
+-- immutable audit log table for regulatory compliance and audit trails.
+-- ----------------------------------------------------------------------------
+CREATE TRIGGER trg_audit_account_update
+AFTER UPDATE ON ACCOUNT
 FOR EACH ROW
 BEGIN
-    DECLARE v_loan_amount DECIMAL(15,2);
-    DECLARE v_total_paid DECIMAL(15,2);
+    IF OLD.Status != NEW.Status OR OLD.Balance != NEW.Balance THEN
+        INSERT INTO ACCOUNT_AUDIT (
+            AccountID, OldStatus, NewStatus, OldBalance, NewBalance, ActionType
+        ) VALUES (
+            NEW.AccountID,
+            OLD.Status,
+            NEW.Status,
+            OLD.Balance,
+            NEW.Balance,
+            CASE 
+                WHEN OLD.Status != NEW.Status AND OLD.Balance != NEW.Balance THEN 'STATUS_AND_BALANCE_CHANGE'
+                WHEN OLD.Status != NEW.Status THEN 'STATUS_CHANGE'
+                ELSE 'BALANCE_UPDATE'
+            END
+        );
+    END IF;
+END$$
 
-    SELECT LoanAmount
-      INTO v_loan_amount
-      FROM LOAN
-     WHERE LoanID = NEW.LoanID;
-
-    SELECT COALESCE(SUM(Amount), 0)
-      INTO v_total_paid
-      FROM LOAN_PAYMENT
-     WHERE LoanID = NEW.LoanID;
-
-    IF v_total_paid >= v_loan_amount THEN
-        UPDATE LOAN
-           SET LoanStatus = 'Closed'
-         WHERE LoanID = NEW.LoanID
-           AND LoanStatus = 'Approved';
+-- ----------------------------------------------------------------------------
+-- TRIGGER 4: trg_prevent_loan_amount_mutation
+-- Timing: BEFORE UPDATE ON LOAN
+-- Purpose: Protects loan contracts from unauthorized principal modification
+-- once sanctioned and active.
+-- ----------------------------------------------------------------------------
+CREATE TRIGGER trg_prevent_loan_amount_mutation
+BEFORE UPDATE ON LOAN
+FOR EACH ROW
+BEGIN
+    IF OLD.LoanStatus = 'Active' AND OLD.LoanAmount != NEW.LoanAmount THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Integrity Violation: Principal sanctioned LoanAmount of an active loan cannot be altered.';
     END IF;
 END$$
 

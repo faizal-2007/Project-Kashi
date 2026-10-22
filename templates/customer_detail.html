@@ -1,106 +1,144 @@
 {% extends "base.html" %}
-{% block title %}Customer Details - Project Kashi{% endblock %}
+
+{% block title %}Customer #{{ customer.CustomerID }} — {{ customer.FirstName }} {{ customer.LastName }}{% endblock %}
 
 {% block content %}
 <div class="page-header">
     <div>
-        <h1 class="page-title">{{ customer.FirstName }} {{ customer.LastName }}</h1>
-        <p class="page-subtitle">CustomerID: {{ customer.CustomerID }}</p>
+        <h2 class="page-title">{{ customer.FirstName }} {{ customer.LastName }}</h2>
+        <p class="page-subtitle">Customer Portfolio &bull; ID #{{ customer.CustomerID }}</p>
     </div>
-    <div class="page-actions">
-        <a href="{{ url_for('customers') }}" class="btn btn-secondary">Back to Customers</a>
-        <a href="{{ url_for('account_open') }}" class="btn btn-primary">Open Account</a>
+    <div style="display: flex; gap: 0.5rem;">
+        <a href="{{ url_for('account_open', customer_id=customer.CustomerID) }}" class="btn btn-accent">+ Open Account</a>
+        <a href="{{ url_for('customer_list') }}" class="btn btn-secondary">&larr; Customer List</a>
     </div>
 </div>
 
-<section class="panel">
-    <div class="panel-header"><h2 class="panel-title">Profile</h2></div>
-    <div class="detail-grid">
-        <div><span class="detail-label">Date of Birth</span><span class="detail-value">{{ customer.DateOfBirth }}</span></div>
-        <div><span class="detail-label">Gender</span><span class="detail-value">{{ customer.Gender }}</span></div>
-        <div><span class="detail-label">Mobile</span><span class="detail-value">{{ customer.Mobile }}</span></div>
-        <div><span class="detail-label">Email</span><span class="detail-value">{{ customer.Email }}</span></div>
-        <div><span class="detail-label">City</span><span class="detail-value">{{ customer.City }}</span></div>
-        <div><span class="detail-label">Registration Date</span><span class="detail-value">{{ customer.RegistrationDate|datetime }}</span></div>
-        <div class="detail-full"><span class="detail-label">Address</span><span class="detail-value">{{ customer.Address }}</span></div>
+<!-- Profile Info Card -->
+<div class="card">
+    <div class="card-header">
+        <h3>Personal Demographics &amp; Contact</h3>
     </div>
-</section>
+    <div class="card-body">
+        <div class="form-grid">
+            <div><strong>Email:</strong> {{ customer.Email }}</div>
+            <div><strong>Mobile:</strong> {{ customer.Mobile }}</div>
+            <div><strong>Date of Birth:</strong> {{ customer.DateOfBirth | dateformat }}</div>
+            <div><strong>Gender:</strong> {{ customer.Gender }}</div>
+            <div><strong>Address:</strong> {{ customer.Address }}, {{ customer.City }}</div>
+            <div><strong>Registration Date:</strong> {{ customer.RegistrationDate | dateformat("%d %b %Y, %I:%M %p") }}</div>
+        </div>
+    </div>
+</div>
 
-<section class="panel">
-    <div class="panel-header"><h2 class="panel-title">Accounts Held</h2></div>
-    <div class="table-wrap">
-        <table class="data-table">
-            <thead>
-                <tr><th>Account Number</th><th>Type</th><th>Branch</th><th>Balance</th><th>Status</th><th>Holder Type</th><th>Action</th></tr>
-            </thead>
-            <tbody>
-                {% for a in accounts %}
-                <tr>
-                    <td>{{ a.AccountNumber }}</td>
-                    <td>{{ a.AccountType }}</td>
-                    <td>{{ a.BranchName }}</td>
-                    <td>{{ a.Balance|currency }}</td>
-                    <td><span class="badge badge-{{ a.Status|lower }}">{{ a.Status }}</span></td>
-                    <td>{{ a.HolderType }}</td>
-                    <td><a href="{{ url_for('account_detail', account_id=a.AccountID) }}" class="link">Details</a></td>
-                </tr>
-                {% else %}
-                <tr><td colspan="7" class="empty-state">No accounts linked.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<!-- Linked Bank Accounts -->
+<div class="card">
+    <div class="card-header">
+        <h3>Linked Bank Accounts</h3>
+        <a href="{{ url_for('account_open', customer_id=customer.CustomerID) }}" class="btn btn-primary btn-sm">+ Add Account</a>
     </div>
-</section>
+    <div class="card-body" style="padding: 0;">
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Account #</th>
+                        <th>Type</th>
+                        <th>Branch</th>
+                        <th>IFSC</th>
+                        <th>Holder Role</th>
+                        <th>Current Balance</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for acc in accounts %}
+                    <tr>
+                        <td><strong>{{ acc.AccountNumber }}</strong></td>
+                        <td>{{ acc.AccountType }}</td>
+                        <td>{{ acc.BranchName }}</td>
+                        <td><code>{{ acc.IFSCCode }}</code></td>
+                        <td>
+                            {% if acc.HolderType == 'Primary' %}
+                                <span class="badge badge-primary-holder">Primary</span>
+                            {% else %}
+                                <span class="badge badge-joint-holder">Joint</span>
+                            {% endif %}
+                        </td>
+                        <td><strong>{{ acc.Balance | currency }}</strong></td>
+                        <td>
+                            {% if acc.Status == 'Active' %}
+                                <span class="badge badge-active">Active</span>
+                            {% elif acc.Status == 'Inactive' %}
+                                <span class="badge badge-inactive">Inactive</span>
+                            {% else %}
+                                <span class="badge badge-closed">Closed</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('account_detail', account_id=acc.AccountID) }}" class="btn btn-secondary btn-sm">Manage &rarr;</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                            This customer has no active bank accounts. Click "+ Open Account" above to initialize one.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 
-<section class="panel">
-    <div class="panel-header"><h2 class="panel-title">Loans</h2></div>
-    <div class="table-wrap">
-        <table class="data-table">
-            <thead>
-                <tr><th>LoanID</th><th>Type</th><th>Amount</th><th>Interest</th><th>Start Date</th><th>Tenure</th><th>Status</th></tr>
-            </thead>
-            <tbody>
-                {% for l in loans %}
-                <tr>
-                    <td>{{ l.LoanID }}</td>
-                    <td>{{ l.LoanType }}</td>
-                    <td>{{ l.LoanAmount|currency }}</td>
-                    <td>{{ l.InterestRate }}%</td>
-                    <td>{{ l.StartDate }}</td>
-                    <td>{{ l.TenureMonths }} months</td>
-                    <td><span class="badge badge-{{ l.LoanStatus|lower }}">{{ l.LoanStatus }}</span></td>
-                </tr>
-                {% else %}
-                <tr><td colspan="7" class="empty-state">No loans recorded.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<!-- Customer Loans -->
+<div class="card">
+    <div class="card-header">
+        <h3>Credit &amp; Loan Facilities</h3>
     </div>
-</section>
-
-<section class="panel">
-    <div class="panel-header"><h2 class="panel-title">Recent Transactions (up to 50)</h2></div>
-    <div class="table-wrap">
-        <table class="data-table">
-            <thead>
-                <tr><th>ID</th><th>Account</th><th>Type</th><th>Amount</th><th>Date</th><th>Reference</th><th>Status</th></tr>
-            </thead>
-            <tbody>
-                {% for t in transactions %}
-                <tr>
-                    <td>{{ t.TransactionID }}</td>
-                    <td>{{ t.AccountNumber }}</td>
-                    <td><span class="badge badge-{{ t.TransactionType|lower }}">{{ t.TransactionType.replace('_',' ') }}</span></td>
-                    <td>{{ t.Amount|currency }}</td>
-                    <td>{{ t.TransactionDate|datetime }}</td>
-                    <td>{{ t.ReferenceNumber or '-' }}</td>
-                    <td><span class="badge badge-{{ t.TransactionStatus|lower }}">{{ t.TransactionStatus|title }}</span></td>
-                </tr>
-                {% else %}
-                <tr><td colspan="7" class="empty-state">No transactions found.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="card-body" style="padding: 0;">
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Loan ID</th>
+                        <th>Type</th>
+                        <th>Branch</th>
+                        <th>Sanction Amount</th>
+                        <th>Interest Rate</th>
+                        <th>Tenure</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for loan in loans %}
+                    <tr>
+                        <td>#{{ loan.LoanID }}</td>
+                        <td><strong>{{ loan.LoanType }}</strong></td>
+                        <td>{{ loan.BranchName }}</td>
+                        <td>{{ loan.LoanAmount | currency }}</td>
+                        <td>{{ loan.InterestRate }}% p.a.</td>
+                        <td>{{ loan.TenureMonths }} Months</td>
+                        <td>
+                            <span class="badge badge-{{ 'active' if loan.LoanStatus == 'Active' else 'closed' }}">{{ loan.LoanStatus }}</span>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('loan_payments', loan_id=loan.LoanID) }}" class="btn btn-secondary btn-sm">Repayments &rarr;</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">
+                            No loans recorded for this customer.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
-</section>
+</div>
 {% endblock %}

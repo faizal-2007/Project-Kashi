@@ -1,51 +1,67 @@
 {% extends "base.html" %}
-{% block title %}Loans - Project Kashi{% endblock %}
+
+{% block title %}Loan Portfolio — Project Kashi{% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <div><h1 class="page-title">Loan Management</h1><p class="page-subtitle">Applications, approvals, outstanding balances, and closures</p></div>
-    <div class="page-actions">
-        <a href="{{ url_for('loan_new') }}" class="btn btn-primary">New Loan Application</a>
-        <a href="{{ url_for('loan_payments') }}" class="btn btn-secondary">Record Payment</a>
+    <div>
+        <h2 class="page-title">Credit &amp; Loan Facilities</h2>
+        <p class="page-subtitle">Academic credit management, repayment tracking, and loan life-cycle monitoring</p>
     </div>
+    <a href="{{ url_for('loan_create') }}" class="btn btn-primary">+ Sanction Loan</a>
 </div>
 
-<section class="panel">
-    <div class="table-wrap">
-        <table class="data-table">
-            <thead><tr><th>ID</th><th>Customer</th><th>Branch</th><th>Type</th><th>Amount</th><th>Rate</th><th>Paid</th><th>Outstanding</th><th>Tenure</th><th>Status</th><th>Actions</th></tr></thead>
-            <tbody>
-            {% for l in loans %}
-                <tr>
-                    <td>{{ l.LoanID }}</td>
-                    <td>{{ l.CustomerName }}</td>
-                    <td>{{ l.BranchName }}</td>
-                    <td>{{ l.LoanType }}</td>
-                    <td>{{ l.LoanAmount|currency }}</td>
-                    <td>{{ l.InterestRate }}%</td>
-                    <td>{{ l.TotalPaid|currency }}</td>
-                    <td>{{ l.OutstandingAmount|currency }}</td>
-                    <td>{{ l.TenureMonths }} mo</td>
-                    <td><span class="badge badge-{{ l.LoanStatus|lower }}">{{ l.LoanStatus }}</span></td>
-                    <td class="actions-cell">
-                        <a class="link" href="{{ url_for('loan_detail', loan_id=l.LoanID) }}">View</a>
-                        {% if l.LoanStatus == 'Pending' %}
-                        <form method="post" action="{{ url_for('loan_decision', loan_id=l.LoanID, decision='approve') }}" class="inline-form" data-confirm="Approve this loan?">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button class="btn btn-small btn-success" type="submit">Approve</button>
-                        </form>
-                        <form method="post" action="{{ url_for('loan_decision', loan_id=l.LoanID, decision='reject') }}" class="inline-form" data-confirm="Reject this loan?">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button class="btn btn-small btn-danger" type="submit">Reject</button>
-                        </form>
-                        {% endif %}
-                    </td>
-                </tr>
-            {% else %}
-                <tr><td colspan="11" class="empty-state">No loan applications found.</td></tr>
-            {% endfor %}
-            </tbody>
-        </table>
+<div class="card">
+    <div class="card-body" style="padding: 0;">
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Loan ID</th>
+                        <th>Borrower</th>
+                        <th>Loan Category</th>
+                        <th>Branch</th>
+                        <th>Sanction Amount</th>
+                        <th>Interest</th>
+                        <th>Tenure</th>
+                        <th>Total Repaid</th>
+                        <th>Outstanding</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for l in loans %}
+                    <tr>
+                        <td>#{{ l.LoanID }}</td>
+                        <td>
+                            <strong>{{ l.BorrowerName }}</strong>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">{{ l.BorrowerMobile }}</div>
+                        </td>
+                        <td>{{ l.LoanType }}</td>
+                        <td>{{ l.BranchName }}</td>
+                        <td><strong>{{ l.LoanAmount | currency }}</strong></td>
+                        <td>{{ l.InterestRate }}%</td>
+                        <td>{{ l.TenureMonths }} M</td>
+                        <td style="color: var(--success); font-weight: 600;">{{ l.TotalPaid | currency }}</td>
+                        <td style="color: var(--danger); font-weight: 600;">{{ l.OutstandingBalance | currency }}</td>
+                        <td>
+                            <span class="badge badge-{{ 'active' if l.LoanStatus == 'Active' else 'closed' }}">{{ l.LoanStatus }}</span>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('loan_payments', loan_id=l.LoanID) }}" class="btn btn-secondary btn-sm">Payments &rarr;</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="11" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                            No loan records found. Click "+ Sanction Loan" to disburse one.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
-</section>
+</div>
 {% endblock %}

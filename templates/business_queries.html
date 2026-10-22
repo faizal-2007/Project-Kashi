@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}SQL Business Analytics — Project Kashi{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2 class="page-title">SQL Business Analytics &amp; Query Suite</h2>
+        <p class="page-subtitle">15 Comprehensive Business Problems demonstrating JOINs, Aggregations, Subqueries, &amp; Set Operations</p>
+    </div>
+</div>
+
+<!-- Query Selector Tabs -->
+<div class="query-tabs">
+    {% for q in queries %}
+        <a href="{{ url_for('business_queries', query_id=q.id) }}" class="query-tab-btn {% if q.id == selected_query.id %}active{% endif %}">
+            Problem {{ q.id }}: {{ q.title[:24] }}...
+        </a>
+    {% endfor %}
+</div>
+
+<!-- Selected Query Details Card -->
+<div class="card">
+    <div class="card-header">
+        <div>
+            <h3>Problem {{ selected_query.id }}: {{ selected_query.title }}</h3>
+            <p class="page-subtitle" style="margin-top: 0.25rem;">{{ selected_query.description }}</p>
+        </div>
+        <div>
+            <span class="badge badge-primary-holder" style="font-size: 0.8rem;">DBMS Concept: {{ selected_query.concepts }}</span>
+        </div>
+    </div>
+    <div class="card-body">
+        <h4 style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem;">Executable SQL Statement:</h4>
+        <pre class="sql-box"><code>{{ selected_query.sql }}</code></pre>
+
+        {% if error_msg %}
+            <div class="alert alert-warning">
+                <strong>Execution Notice:</strong> {{ error_msg }}
+            </div>
+        {% else %}
+            <h4 style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem;">Live MySQL Execution Output ({{ results | length }} Row(s) Retrieved):</h4>
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            {% for col in columns %}
+                                <th>{{ col }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in results %}
+                        <tr>
+                            {% for col in columns %}
+                                <td>
+                                    {% if 'Balance' in col or 'Amount' in col or 'Salary' in col or 'Deposits' in col or 'Payroll' in col or 'Cost' in col or 'Inflow' in col or 'Outflow' in col or 'Volume' in col %}
+                                        {{ row[col] | currency }}
+                                    {% else %}
+                                        {{ row[col] }}
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="{{ columns | length if columns else 1 }}" style="text-align: center; padding: 1.5rem; color: var(--text-muted);">
+                                Query returned 0 rows.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,127 +1,56 @@
-# Relational Schema
+# Relational Schema — Project Kashi
 
-Notation: **PK** = primary key, **FK** = foreign key, **UK** = unique key, **NN** = not null.
+This document formalizes the relational database schema implemented in **Project Kashi — Banking Management System** on MySQL 8.0+.
 
-## Table definitions
+---
 
-```text
-BRANCH(
-    BranchID PK,
-    BranchName NN,
-    IFSCCode NN UK,
-    Address NN,
-    City NN,
-    State NN,
-    ContactNumber NN
+## 1. Formal Relational Schema Notation
+
+Primary keys are **underlined**, foreign keys are marked with an arrow ($\rightarrow$) referencing their target parent relation.
+
+1. **BRANCH** (
+   <u>BranchID</u>, BranchName, IFSCCode, Address, City, State, ContactNumber, CreatedAt
 )
 
-CUSTOMER(
-    CustomerID PK,
-    FirstName NN,
-    LastName NN,
-    DateOfBirth NN,
-    Gender NN,
-    Mobile NN UK,
-    Email NN UK,
-    Address NN,
-    City NN,
-    RegistrationDate NN DEFAULT CURRENT_TIMESTAMP
+2. **EMPLOYEE** (
+   <u>EmployeeID</u>, EmployeeName, Mobile, Email, Designation, Salary, JoiningDate, BranchID $\rightarrow$ BRANCH(BranchID)
 )
 
-EMPLOYEE(
-    EmployeeID PK,
-    EmployeeName NN,
-    Mobile NN UK,
-    Email NN UK,
-    Designation NN,
-    Salary NN,
-    JoiningDate NN,
-    BranchID NN FK -> BRANCH(BranchID)
+3. **CUSTOMER** (
+   <u>CustomerID</u>, FirstName, LastName, DateOfBirth, Gender, Mobile, Email, Address, City, RegistrationDate
 )
 
-ACCOUNT(
-    AccountID PK,
-    AccountNumber NN UK,
-    AccountType NN,
-    OpeningDate NN DEFAULT CURRENT_TIMESTAMP,
-    Balance NN DEFAULT 0.00,
-    Status NN DEFAULT 'Active',
-    BranchID NN FK -> BRANCH(BranchID)
+4. **ACCOUNT** (
+   <u>AccountID</u>, AccountNumber, AccountType, OpeningDate, Balance, Status, BranchID $\rightarrow$ BRANCH(BranchID)
 )
 
-ACCOUNT_HOLDER(
-    CustomerID PK FK -> CUSTOMER(CustomerID),
-    AccountID PK FK -> ACCOUNT(AccountID),
-    HolderSince NN DEFAULT CURRENT_TIMESTAMP,
-    HolderType NN DEFAULT 'Primary'
+5. **ACCOUNT_HOLDER** (
+   <u>CustomerID $\rightarrow$ CUSTOMER(CustomerID), AccountID $\rightarrow$ ACCOUNT(AccountID)</u>, HolderSince, HolderType
 )
 
-BANK_TRANSACTION(
-    TransactionID PK,
-    AccountID NN FK -> ACCOUNT(AccountID),
-    TransactionType NN,
-    Amount NN,
-    TransactionDate NN DEFAULT CURRENT_TIMESTAMP,
-    Description NULL,
-    ReferenceNumber NULL UK,
-    TransferGroupReference NULL,
-    TransactionStatus NN DEFAULT 'SUCCESS'
+6. **BANK_TRANSACTION** (
+   <u>TransactionID</u>, AccountID $\rightarrow$ ACCOUNT(AccountID), TransactionType, Amount, TransactionDate, Description, ReferenceNumber, TransactionStatus
 )
 
-LOAN(
-    LoanID PK,
-    CustomerID NN FK -> CUSTOMER(CustomerID),
-    BranchID NN FK -> BRANCH(BranchID),
-    LoanType NN,
-    LoanAmount NN,
-    InterestRate NN,
-    StartDate NN,
-    TenureMonths NN,
-    LoanStatus NN DEFAULT 'Pending'
+7. **LOAN** (
+   <u>LoanID</u>, CustomerID $\rightarrow$ CUSTOMER(CustomerID), BranchID $\rightarrow$ BRANCH(BranchID), LoanType, LoanAmount, InterestRate, StartDate, TenureMonths, LoanStatus
 )
 
-LOAN_PAYMENT(
-    PaymentID PK,
-    LoanID NN FK -> LOAN(LoanID),
-    PaymentDate NN DEFAULT CURRENT_TIMESTAMP,
-    Amount NN,
-    PaymentMode NN,
-    ReferenceNumber NULL UK
+8. **LOAN_PAYMENT** (
+   <u>PaymentID</u>, LoanID $\rightarrow$ LOAN(LoanID), PaymentDate, Amount, PaymentMode, ReferenceNumber
 )
-```
 
-## Relationships represented by foreign keys
+---
 
-| Child table | Foreign key column | Parent table | Parent column |
-|---|---|---|---|
-| EMPLOYEE | BranchID | BRANCH | BranchID |
-| ACCOUNT | BranchID | BRANCH | BranchID |
-| ACCOUNT_HOLDER | CustomerID | CUSTOMER | CustomerID |
-| ACCOUNT_HOLDER | AccountID | ACCOUNT | AccountID |
-| BANK_TRANSACTION | AccountID | ACCOUNT | AccountID |
-| LOAN | CustomerID | CUSTOMER | CustomerID |
-| LOAN | BranchID | BRANCH | BranchID |
-| LOAN_PAYMENT | LoanID | LOAN | LoanID |
+## 2. Integrity Constraints & Referential Actions
 
-All foreign keys use `ON UPDATE CASCADE` and `ON DELETE RESTRICT`. IDs are auto-increment surrogate keys and are not edited in normal operation, while restrictive deletes protect financial history.
-
-## Additional design decision
-
-`BANK_TRANSACTION.TransferGroupReference` was added so the two sides of a transfer can share a common identifier while every individual `ReferenceNumber` remains unique as required. It is `NULL` for deposits and withdrawals, and the check constraint `chk_transaction_transfer_reference` enforces this rule.
-
-`ACCOUNT_HOLDER.HolderType` and the composite key support an account with one primary holder and several joint holders.
-
-`LOAN` has no stored `OutstandingAmount` column. Outstanding balance is derived from `LoanAmount - SUM(LOAN_PAYMENT.Amount)` using the `fn_loan_outstanding` function and the `vw_loan_payment_summary` view. This avoids an update anomaly and keeps the schema in third normal form.
-
-## Indexes
-
-| Index | Table | Columns | Reason |
-|---|---|---|---|
-| `uq_customer_mobile` | CUSTOMER | Mobile | Prevent duplicate customers. |
-| `uq_customer_email` | CUSTOMER | Email | Prevent duplicate customers. |
-| `uq_branch_ifsc` | BRANCH | IFSCCode | Real-world branch uniqueness. |
-| `uq_account_number` | ACCOUNT | AccountNumber | Unique account numbers. |
-| `uq_transaction_reference` | BANK_TRANSACTION | ReferenceNumber | Reference uniqueness. |
-| `idx_transaction_account_date` | BANK_TRANSACTION | AccountID, TransactionDate | Fast statement queries. |
-| `idx_transaction_transfer_group` | BANK_TRANSACTION | TransferGroupReference | Find both transfer legs. |
-| `idx_payment_loan_date` | LOAN_PAYMENT | LoanID, PaymentDate | Fast loan history. |
+| Relationship | Child Table | Foreign Key | Parent Table | On Update | On Delete | Business Rationale |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| Branch Staff | `EMPLOYEE` | `BranchID` | `BRANCH` | CASCADE | RESTRICT | Prevents accidental deletion of a branch if employees are currently active there. |
+| Account Branch | `ACCOUNT` | `BranchID` | `BRANCH` | CASCADE | RESTRICT | Prevents deletion of branches that still maintain active customer deposit accounts. |
+| Account Ownership | `ACCOUNT_HOLDER` | `CustomerID` | `CUSTOMER` | CASCADE | CASCADE | When a customer profile is expunged, their ownership mappings are removed. |
+| Account Mapping | `ACCOUNT_HOLDER` | `AccountID` | `ACCOUNT` | CASCADE | CASCADE | When an account record is expunged, its ownership associations are purged. |
+| Transaction Ledger | `BANK_TRANSACTION` | `AccountID` | `ACCOUNT` | CASCADE | RESTRICT | **Immutable audit rule**: Financial transactions cannot be orphaned; an account with past transactions cannot be deleted. |
+| Loan Facility | `LOAN` | `CustomerID` | `CUSTOMER` | CASCADE | RESTRICT | A borrower cannot be deleted while debt obligations remain open. |
+| Loan Disbursal | `LOAN` | `BranchID` | `BRANCH` | CASCADE | RESTRICT | Branch cannot be deleted while carrying loan liabilities. |
+| Loan Repayment | `LOAN_PAYMENT` | `LoanID` | `LOAN` | CASCADE | RESTRICT | Repayment receipts cannot be orphaned or deleted arbitrarily. |

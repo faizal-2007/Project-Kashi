@@ -1,158 +1,187 @@
--- Project Kashi - Banking Management System
--- MySQL 8.0 schema. WARNING: this script drops and recreates the project database.
--- Run it only for this academic project, never against a database containing real data.
+-- ============================================================================
+-- PROJECT KASHI — BANKING MANAGEMENT SYSTEM
+-- Script: schema.sql
+-- Purpose: Complete Relational Schema Definition for MySQL 8.0+
+-- Database: project_kashi
+-- ============================================================================
 
-DROP DATABASE IF EXISTS project_kashi;
-CREATE DATABASE project_kashi
-    CHARACTER SET utf8mb4
-    COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS project_kashi;
 USE project_kashi;
 
+-- Drop tables in reverse dependency order if recreating
+DROP TABLE IF EXISTS LOAN_PAYMENT;
+DROP TABLE IF EXISTS LOAN;
+DROP TABLE IF EXISTS BANK_TRANSACTION;
+DROP TABLE IF EXISTS ACCOUNT_HOLDER;
+DROP TABLE IF EXISTS ACCOUNT;
+DROP TABLE IF EXISTS EMPLOYEE;
+DROP TABLE IF EXISTS CUSTOMER;
+DROP TABLE IF EXISTS BRANCH;
+
+-- ----------------------------------------------------------------------------
+-- TABLE 1: BRANCH
+-- Purpose: Stores physical and administrative bank branch locations.
+-- ----------------------------------------------------------------------------
 CREATE TABLE BRANCH (
     BranchID INT AUTO_INCREMENT PRIMARY KEY,
     BranchName VARCHAR(100) NOT NULL,
-    IFSCCode CHAR(11) NOT NULL,
+    IFSCCode VARCHAR(15) NOT NULL UNIQUE,
     Address VARCHAR(255) NOT NULL,
-    City VARCHAR(80) NOT NULL,
-    State VARCHAR(80) NOT NULL,
+    City VARCHAR(50) NOT NULL,
+    State VARCHAR(50) NOT NULL,
     ContactNumber VARCHAR(15) NOT NULL,
-    CONSTRAINT uq_branch_ifsc UNIQUE (IFSCCode),
-    CONSTRAINT chk_branch_ifsc CHECK (IFSCCode REGEXP '^[A-Z]{4}0[0-9]{6}$'),
-    CONSTRAINT chk_branch_contact CHECK (ContactNumber REGEXP '^[0-9]{10,15}$')
-) ENGINE=InnoDB;
+    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_branch_ifsc CHECK (CHAR_LENGTH(IFSCCode) >= 8)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE CUSTOMER (
-    CustomerID INT AUTO_INCREMENT PRIMARY KEY,
-    FirstName VARCHAR(60) NOT NULL,
-    LastName VARCHAR(60) NOT NULL,
-    DateOfBirth DATE NOT NULL,
-    Gender ENUM('Male', 'Female', 'Other') NOT NULL,
-    Mobile VARCHAR(15) NOT NULL,
-    Email VARCHAR(120) NOT NULL,
-    Address VARCHAR(255) NOT NULL,
-    City VARCHAR(80) NOT NULL,
-    RegistrationDate DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_customer_mobile UNIQUE (Mobile),
-    CONSTRAINT uq_customer_email UNIQUE (Email),
-    CONSTRAINT chk_customer_mobile CHECK (Mobile REGEXP '^[0-9]{10,15}$'),
-    CONSTRAINT chk_customer_email CHECK (Email LIKE '%_@_%._%'),
-    CONSTRAINT chk_customer_dob CHECK (DateOfBirth BETWEEN '1900-01-01' AND '2100-12-31')
-) ENGINE=InnoDB;
-
+-- ----------------------------------------------------------------------------
+-- TABLE 2: EMPLOYEE
+-- Purpose: Stores staff members associated with specific branches.
+-- ----------------------------------------------------------------------------
 CREATE TABLE EMPLOYEE (
     EmployeeID INT AUTO_INCREMENT PRIMARY KEY,
     EmployeeName VARCHAR(100) NOT NULL,
     Mobile VARCHAR(15) NOT NULL,
-    Email VARCHAR(120) NOT NULL,
-    Designation VARCHAR(60) NOT NULL,
-    Salary DECIMAL(12,2) NOT NULL,
+    Email VARCHAR(100) NOT NULL UNIQUE,
+    Designation VARCHAR(50) NOT NULL,
+    Salary DECIMAL(12, 2) NOT NULL,
     JoiningDate DATE NOT NULL,
     BranchID INT NOT NULL,
-    CONSTRAINT uq_employee_mobile UNIQUE (Mobile),
-    CONSTRAINT uq_employee_email UNIQUE (Email),
-    CONSTRAINT chk_employee_mobile CHECK (Mobile REGEXP '^[0-9]{10,15}$'),
-    CONSTRAINT chk_employee_email CHECK (Email LIKE '%_@_%._%'),
-    CONSTRAINT chk_employee_salary CHECK (Salary > 0),
-    CONSTRAINT fk_employee_branch FOREIGN KEY (BranchID)
-        REFERENCES BRANCH (BranchID)
-        ON UPDATE CASCADE
+    CONSTRAINT chk_emp_salary CHECK (Salary > 0),
+    CONSTRAINT fk_emp_branch FOREIGN KEY (BranchID) 
+        REFERENCES BRANCH(BranchID) 
+        ON UPDATE CASCADE 
         ON DELETE RESTRICT
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ----------------------------------------------------------------------------
+-- TABLE 3: CUSTOMER
+-- Purpose: Stores individual banking customer personal details.
+-- ----------------------------------------------------------------------------
+CREATE TABLE CUSTOMER (
+    CustomerID INT AUTO_INCREMENT PRIMARY KEY,
+    FirstName VARCHAR(50) NOT NULL,
+    LastName VARCHAR(50) NOT NULL,
+    DateOfBirth DATE NOT NULL,
+    Gender ENUM('Male', 'Female', 'Other') NOT NULL,
+    Mobile VARCHAR(15) NOT NULL UNIQUE,
+    Email VARCHAR(100) NOT NULL UNIQUE,
+    Address VARCHAR(255) NOT NULL,
+    City VARCHAR(50) NOT NULL,
+    RegistrationDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_cust_mobile CHECK (CHAR_LENGTH(Mobile) >= 10)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
+-- TABLE 4: ACCOUNT
+-- Purpose: Stores bank accounts held at specific branches.
+-- ----------------------------------------------------------------------------
 CREATE TABLE ACCOUNT (
     AccountID INT AUTO_INCREMENT PRIMARY KEY,
-    AccountNumber VARCHAR(12) NOT NULL,
+    AccountNumber VARCHAR(20) NOT NULL UNIQUE,
     AccountType ENUM('Saving', 'Current', 'Salary') NOT NULL,
-    OpeningDate DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    Balance DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+    OpeningDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+    Balance DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     Status ENUM('Active', 'Inactive', 'Closed') NOT NULL DEFAULT 'Active',
     BranchID INT NOT NULL,
-    CONSTRAINT uq_account_number UNIQUE (AccountNumber),
-    CONSTRAINT chk_account_number CHECK (AccountNumber REGEXP '^[0-9]{12}$'),
-    CONSTRAINT chk_account_balance CHECK (Balance >= 0),
-    CONSTRAINT fk_account_branch FOREIGN KEY (BranchID)
-        REFERENCES BRANCH (BranchID)
-        ON UPDATE CASCADE
+    CONSTRAINT chk_acc_balance CHECK (Balance >= 0.00),
+    CONSTRAINT fk_acc_branch FOREIGN KEY (BranchID) 
+        REFERENCES BRANCH(BranchID) 
+        ON UPDATE CASCADE 
         ON DELETE RESTRICT
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ----------------------------------------------------------------------------
+-- TABLE 5: ACCOUNT_HOLDER
+-- Purpose: Resolves the Many-to-Many relationship between CUSTOMER and ACCOUNT.
+-- ----------------------------------------------------------------------------
 CREATE TABLE ACCOUNT_HOLDER (
     CustomerID INT NOT NULL,
     AccountID INT NOT NULL,
-    HolderSince DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    HolderSince DATETIME DEFAULT CURRENT_TIMESTAMP,
     HolderType ENUM('Primary', 'Joint') NOT NULL DEFAULT 'Primary',
     PRIMARY KEY (CustomerID, AccountID),
-    CONSTRAINT fk_holder_customer FOREIGN KEY (CustomerID)
-        REFERENCES CUSTOMER (CustomerID)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT,
-    CONSTRAINT fk_holder_account FOREIGN KEY (AccountID)
-        REFERENCES ACCOUNT (AccountID)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT
-) ENGINE=InnoDB;
+    CONSTRAINT fk_holder_cust FOREIGN KEY (CustomerID) 
+        REFERENCES CUSTOMER(CustomerID) 
+        ON UPDATE CASCADE 
+        ON DELETE CASCADE,
+    CONSTRAINT fk_holder_acc FOREIGN KEY (AccountID) 
+        REFERENCES ACCOUNT(AccountID) 
+        ON UPDATE CASCADE 
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ----------------------------------------------------------------------------
+-- TABLE 6: BANK_TRANSACTION (Logical Entity: TRANSACTION)
+-- Purpose: Preserves immutable ledger of financial activity on accounts.
+-- ----------------------------------------------------------------------------
 CREATE TABLE BANK_TRANSACTION (
-    TransactionID BIGINT AUTO_INCREMENT PRIMARY KEY,
+    TransactionID INT AUTO_INCREMENT PRIMARY KEY,
     AccountID INT NOT NULL,
     TransactionType ENUM('DEPOSIT', 'WITHDRAWAL', 'TRANSFER_IN', 'TRANSFER_OUT') NOT NULL,
-    Amount DECIMAL(15,2) NOT NULL,
-    TransactionDate DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    Amount DECIMAL(15, 2) NOT NULL,
+    TransactionDate DATETIME DEFAULT CURRENT_TIMESTAMP,
     Description VARCHAR(255) NULL,
-    ReferenceNumber VARCHAR(60) NULL,
-    TransferGroupReference VARCHAR(50) NULL,
+    ReferenceNumber VARCHAR(50) NOT NULL,
     TransactionStatus ENUM('SUCCESS', 'FAILED', 'PENDING') NOT NULL DEFAULT 'SUCCESS',
-    CONSTRAINT uq_transaction_reference UNIQUE (ReferenceNumber),
-    CONSTRAINT chk_transaction_amount CHECK (Amount > 0),
-    CONSTRAINT chk_transaction_transfer_reference CHECK (
-        (TransactionType IN ('TRANSFER_IN', 'TRANSFER_OUT') AND TransferGroupReference IS NOT NULL)
-        OR
-        (TransactionType IN ('DEPOSIT', 'WITHDRAWAL') AND TransferGroupReference IS NULL)
-    ),
-    CONSTRAINT fk_transaction_account FOREIGN KEY (AccountID)
-        REFERENCES ACCOUNT (AccountID)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT,
-    INDEX idx_transaction_account_date (AccountID, TransactionDate),
-    INDEX idx_transaction_type (TransactionType),
-    INDEX idx_transaction_transfer_group (TransferGroupReference)
-) ENGINE=InnoDB;
+    CONSTRAINT chk_tx_amount CHECK (Amount > 0.00),
+    CONSTRAINT fk_tx_acc FOREIGN KEY (AccountID) 
+        REFERENCES ACCOUNT(AccountID) 
+        ON UPDATE CASCADE 
+        ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ----------------------------------------------------------------------------
+-- TABLE 7: LOAN
+-- Purpose: Records loan facilities extended to customers from specific branches.
+-- ----------------------------------------------------------------------------
 CREATE TABLE LOAN (
     LoanID INT AUTO_INCREMENT PRIMARY KEY,
     CustomerID INT NOT NULL,
     BranchID INT NOT NULL,
     LoanType ENUM('Home Loan', 'Education Loan', 'Personal Loan', 'Vehicle Loan') NOT NULL,
-    LoanAmount DECIMAL(15,2) NOT NULL,
-    InterestRate DECIMAL(5,2) NOT NULL,
+    LoanAmount DECIMAL(15, 2) NOT NULL,
+    InterestRate DECIMAL(5, 2) NOT NULL,
     StartDate DATE NOT NULL,
     TenureMonths INT NOT NULL,
-    LoanStatus ENUM('Pending', 'Approved', 'Rejected', 'Closed') NOT NULL DEFAULT 'Pending',
-    CONSTRAINT chk_loan_amount CHECK (LoanAmount > 0),
-    CONSTRAINT chk_loan_interest CHECK (InterestRate BETWEEN 0 AND 50),
-    CONSTRAINT chk_loan_tenure CHECK (TenureMonths BETWEEN 1 AND 600),
-    CONSTRAINT fk_loan_customer FOREIGN KEY (CustomerID)
-        REFERENCES CUSTOMER (CustomerID)
-        ON UPDATE CASCADE
+    LoanStatus ENUM('Applied', 'Approved', 'Disbursed', 'Active', 'Closed', 'Rejected') NOT NULL DEFAULT 'Active',
+    CONSTRAINT chk_loan_amount CHECK (LoanAmount > 0.00),
+    CONSTRAINT chk_loan_rate CHECK (InterestRate >= 0.00),
+    CONSTRAINT chk_loan_tenure CHECK (TenureMonths > 0),
+    CONSTRAINT fk_loan_cust FOREIGN KEY (CustomerID) 
+        REFERENCES CUSTOMER(CustomerID) 
+        ON UPDATE CASCADE 
         ON DELETE RESTRICT,
-    CONSTRAINT fk_loan_branch FOREIGN KEY (BranchID)
-        REFERENCES BRANCH (BranchID)
-        ON UPDATE CASCADE
+    CONSTRAINT fk_loan_branch FOREIGN KEY (BranchID) 
+        REFERENCES BRANCH(BranchID) 
+        ON UPDATE CASCADE 
         ON DELETE RESTRICT
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ----------------------------------------------------------------------------
+-- TABLE 8: LOAN_PAYMENT
+-- Purpose: Records repayments and installments against active loans.
+-- ----------------------------------------------------------------------------
 CREATE TABLE LOAN_PAYMENT (
     PaymentID INT AUTO_INCREMENT PRIMARY KEY,
     LoanID INT NOT NULL,
-    PaymentDate DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    Amount DECIMAL(15,2) NOT NULL,
-    PaymentMode ENUM('Cash', 'Cheque', 'NEFT', 'UPI', 'Card') NOT NULL,
-    ReferenceNumber VARCHAR(60) NULL,
-    CONSTRAINT uq_payment_reference UNIQUE (ReferenceNumber),
-    CONSTRAINT chk_payment_amount CHECK (Amount > 0),
-    CONSTRAINT fk_payment_loan FOREIGN KEY (LoanID)
-        REFERENCES LOAN (LoanID)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT,
-    INDEX idx_payment_loan_date (LoanID, PaymentDate)
-) ENGINE=InnoDB;
+    PaymentDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+    Amount DECIMAL(15, 2) NOT NULL,
+    PaymentMode ENUM('Cash', 'Cheque', 'Account Transfer', 'Online') NOT NULL,
+    ReferenceNumber VARCHAR(50) NOT NULL UNIQUE,
+    CONSTRAINT chk_pay_amount CHECK (Amount > 0.00),
+    CONSTRAINT fk_pay_loan FOREIGN KEY (LoanID) 
+        REFERENCES LOAN(LoanID) 
+        ON UPDATE CASCADE 
+        ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
+-- INDEXES FOR PERFORMANCE OPTIMIZATION
+-- ----------------------------------------------------------------------------
+CREATE INDEX idx_acc_branch ON ACCOUNT(BranchID);
+CREATE INDEX idx_tx_account ON BANK_TRANSACTION(AccountID);
+CREATE INDEX idx_tx_ref ON BANK_TRANSACTION(ReferenceNumber);
+CREATE INDEX idx_loan_cust ON LOAN(CustomerID);
+CREATE INDEX idx_loan_branch ON LOAN(BranchID);
+CREATE INDEX idx_pay_loan ON LOAN_PAYMENT(LoanID);

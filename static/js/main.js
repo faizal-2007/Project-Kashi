@@ -1,60 +1,41 @@
+/**
+ * Project Kashi — Banking Management System
+ * Client-Side Enhancements (Vanilla JS)
+ */
+
 document.addEventListener("DOMContentLoaded", function () {
-    const navToggle = document.getElementById("navToggle");
-    const navMenu = document.getElementById("navMenu");
-
-    if (navToggle && navMenu) {
-        navToggle.addEventListener("click", function () {
-            navMenu.classList.toggle("open");
-            navToggle.setAttribute("aria-expanded", navMenu.classList.contains("open"));
-        });
-    }
-
-    document.querySelectorAll("form[data-confirm]").forEach(function (form) {
-        form.addEventListener("submit", function (event) {
-            if (!window.confirm(form.dataset.confirm)) {
-                event.preventDefault();
-            }
-        });
-    });
-
-    document.querySelectorAll("[data-confirm]").forEach(function (button) {
-        if (button.tagName === "BUTTON" && button.form) {
-            button.addEventListener("click", function (event) {
-                if (!window.confirm(button.dataset.confirm)) {
-                    event.preventDefault();
-                }
-            });
-        }
-    });
-
-    window.setTimeout(function () {
-        document.querySelectorAll(".alert").forEach(function (alert) {
-            alert.style.transition = "opacity 0.4s ease";
-            alert.style.opacity = "0";
-            window.setTimeout(function () { alert.remove(); }, 450);
-        });
-    }, 7000);
-
-    const transferForm = document.getElementById("transferForm");
+    // Confirmation prompts for financial state mutations
+    const transferForm = document.querySelector("#transfer-form");
     if (transferForm) {
-        transferForm.addEventListener("submit", function (event) {
-            const from = document.getElementById("FromAccountID");
-            const to = document.getElementById("ToAccountID");
-            if (from && to && from.value && from.value === to.value) {
-                event.preventDefault();
-                window.alert("Source and destination accounts must be different.");
+        transferForm.addEventListener("submit", function (e) {
+            const amount = document.querySelector("#amount")?.value || "0";
+            const confirmed = confirm(`Are you sure you want to execute this fund transfer of ₹${amount}? This action will immediately adjust both account balances.`);
+            if (!confirmed) {
+                e.preventDefault();
             }
         });
     }
 
-    const dateInputs = document.querySelectorAll('input[type="date"]');
-    const today = new Date().toISOString().split("T")[0];
-    dateInputs.forEach(function (input) {
-        if (input.name === "DateOfBirth") {
-            input.max = today;
-        }
-        if (input.name === "JoiningDate" || input.name === "StartDate") {
-            input.max = today;
-        }
+    const withdrawalForm = document.querySelector("#withdrawal-form");
+    if (withdrawalForm) {
+        withdrawalForm.addEventListener("submit", function (e) {
+            const amount = document.querySelector("#amount")?.value || "0";
+            const confirmed = confirm(`Confirm cash/ATM withdrawal of ₹${amount}?`);
+            if (!confirmed) {
+                e.preventDefault();
+            }
+        });
+    }
+
+    // Auto-dismiss alerts after 6 seconds
+    const alerts = document.querySelectorAll(".alert");
+    alerts.forEach(function (alert) {
+        setTimeout(function () {
+            alert.style.transition = "opacity 0.5s ease";
+            alert.style.opacity = "0";
+            setTimeout(function () {
+                alert.remove();
+            }, 500);
+        }, 6000);
     });
 });

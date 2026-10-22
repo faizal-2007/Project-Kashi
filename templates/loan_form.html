@@ -1,38 +1,83 @@
 {% extends "base.html" %}
-{% block title %}New Loan - Project Kashi{% endblock %}
+
+{% block title %}Sanction Loan — Project Kashi{% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <div><h1 class="page-title">New Loan Application</h1><p class="page-subtitle">Every new application starts with status Pending</p></div>
-    <div class="page-actions"><a href="{{ url_for('loans') }}" class="btn btn-secondary">Back to Loans</a></div>
+    <div>
+        <h2 class="page-title">Sanction &amp; Disburse Loan</h2>
+        <p class="page-subtitle">Underwrite and register an active loan contract against a customer</p>
+    </div>
+    <a href="{{ url_for('loan_list') }}" class="btn btn-secondary">&larr; Back to Loans</a>
 </div>
 
-<section class="panel form-panel">
-    <form method="post" action="{{ url_for('loan_new') }}" class="form-grid">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="form-group"><label for="CustomerID">Customer</label>
-            <select id="CustomerID" name="CustomerID" required class="input">
-                <option value="">Select Customer</option>
-                {% for c in customers %}<option value="{{ c.CustomerID }}">{{ c.CustomerID }} - {{ c.FirstName }} {{ c.LastName }}</option>{% endfor %}
-            </select>
-        </div>
-        <div class="form-group"><label for="BranchID">Branch</label>
-            <select id="BranchID" name="BranchID" required class="input">
-                <option value="">Select Branch</option>
-                {% for b in branches %}<option value="{{ b.BranchID }}">{{ b.BranchName }}</option>{% endfor %}
-            </select>
-        </div>
-        <div class="form-group"><label for="LoanType">Loan Type</label>
-            <select id="LoanType" name="LoanType" required class="input">
-                <option value="">Select Type</option>
-                {% for t in ['Home Loan','Education Loan','Personal Loan','Vehicle Loan'] %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
-            </select>
-        </div>
-        <div class="form-group"><label for="LoanAmount">Loan Amount (₹)</label><input class="input" type="number" min="0.01" step="0.01" id="LoanAmount" name="LoanAmount" required></div>
-        <div class="form-group"><label for="InterestRate">Interest Rate (%)</label><input class="input" type="number" min="0" max="50" step="0.01" id="InterestRate" name="InterestRate" required></div>
-        <div class="form-group"><label for="StartDate">Start Date</label><input class="input" type="date" id="StartDate" name="StartDate" required></div>
-        <div class="form-group"><label for="TenureMonths">Tenure (months)</label><input class="input" type="number" min="1" max="600" id="TenureMonths" name="TenureMonths" required></div>
-        <div class="form-actions"><button class="btn btn-primary" type="submit">Submit Application</button></div>
-    </form>
-</section>
+<div class="card" style="max-width: 750px; margin: 0 auto;">
+    <div class="card-header">
+        <h3>Loan Sanction Application</h3>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('loan_create') }}">
+            <div class="form-grid">
+                <div class="form-group full-width">
+                    <label class="form-label" for="customer_id">Borrower (Customer) *</label>
+                    <select id="customer_id" name="customer_id" class="form-control" required>
+                        <option value="">-- Select Customer --</option>
+                        {% for c in customers %}
+                            <option value="{{ c.CustomerID }}">
+                                #{{ c.CustomerID }} — {{ c.FirstName }} {{ c.LastName }} (Mobile: {{ c.Mobile }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="branch_id">Disbursing Branch *</label>
+                    <select id="branch_id" name="branch_id" class="form-control" required>
+                        <option value="">-- Select Branch --</option>
+                        {% for b in branches %}
+                            <option value="{{ b.BranchID }}">
+                                {{ b.BranchName }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="loan_type">Loan Category *</label>
+                    <select id="loan_type" name="loan_type" class="form-control" required>
+                        <option value="Home Loan">Home Loan</option>
+                        <option value="Education Loan">Education Loan</option>
+                        <option value="Personal Loan">Personal Loan</option>
+                        <option value="Vehicle Loan">Vehicle Loan</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="amount">Sanction Principal Amount (₹) *</label>
+                    <input type="number" id="amount" name="amount" class="form-control" min="1000" step="1000" value="500000" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="rate">Annual Interest Rate (%) *</label>
+                    <input type="number" id="rate" name="rate" class="form-control" min="0" max="30" step="0.05" value="8.50" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="start_date">Disbursement Date *</label>
+                    <input type="date" id="start_date" name="start_date" class="form-control" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="tenure">Tenure (in Months) *</label>
+                    <input type="number" id="tenure" name="tenure" class="form-control" min="1" max="360" value="60" required>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Sanction Loan</button>
+                <a href="{{ url_for('loan_list') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}

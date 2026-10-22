@@ -1,22 +1,35 @@
 erDiagram
-    BRANCH ||--o{ EMPLOYEE : employs
-    BRANCH ||--o{ ACCOUNT : hosts
-    BRANCH ||--o{ LOAN : processes
-    CUSTOMER ||--o{ ACCOUNT_HOLDER : holds
-    ACCOUNT ||--o{ ACCOUNT_HOLDER : has
-    CUSTOMER ||--o{ LOAN : applies_for
-    ACCOUNT ||--o{ BANK_TRANSACTION : records
-    LOAN ||--o{ LOAN_PAYMENT : receives
+    BRANCH ||--o{ EMPLOYEE : "employs"
+    BRANCH ||--o{ ACCOUNT : "maintains"
+    BRANCH ||--o{ LOAN : "disburses"
+    CUSTOMER ||--o{ ACCOUNT_HOLDER : "holds"
+    ACCOUNT ||--o{ ACCOUNT_HOLDER : "has_holders"
+    CUSTOMER ||--o{ LOAN : "borrows"
+    ACCOUNT ||--o{ BANK_TRANSACTION : "records"
+    LOAN ||--o{ LOAN_PAYMENT : "repaid_by"
 
     BRANCH {
         int BranchID PK
         varchar BranchName
-        char IFSCCode UK
+        varchar IFSCCode UK
         varchar Address
         varchar City
         varchar State
         varchar ContactNumber
+        datetime CreatedAt
     }
+
+    EMPLOYEE {
+        int EmployeeID PK
+        varchar EmployeeName
+        varchar Mobile
+        varchar Email UK
+        varchar Designation
+        decimal Salary
+        date JoiningDate
+        int BranchID FK
+    }
+
     CUSTOMER {
         int CustomerID PK
         varchar FirstName
@@ -29,16 +42,7 @@ erDiagram
         varchar City
         datetime RegistrationDate
     }
-    EMPLOYEE {
-        int EmployeeID PK
-        varchar EmployeeName
-        varchar Mobile UK
-        varchar Email UK
-        varchar Designation
-        decimal Salary
-        date JoiningDate
-        int BranchID FK
-    }
+
     ACCOUNT {
         int AccountID PK
         varchar AccountNumber UK
@@ -48,23 +52,25 @@ erDiagram
         enum Status
         int BranchID FK
     }
+
     ACCOUNT_HOLDER {
-        int CustomerID PK,FK
-        int AccountID PK,FK
+        int CustomerID PK_FK
+        int AccountID PK_FK
         datetime HolderSince
         enum HolderType
     }
+
     BANK_TRANSACTION {
-        bigint TransactionID PK
+        int TransactionID PK
         int AccountID FK
         enum TransactionType
         decimal Amount
         datetime TransactionDate
         varchar Description
-        varchar ReferenceNumber UK
-        varchar TransferGroupReference
+        varchar ReferenceNumber
         enum TransactionStatus
     }
+
     LOAN {
         int LoanID PK
         int CustomerID FK
@@ -76,6 +82,7 @@ erDiagram
         int TenureMonths
         enum LoanStatus
     }
+
     LOAN_PAYMENT {
         int PaymentID PK
         int LoanID FK

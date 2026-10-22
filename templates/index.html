@@ -1,116 +1,133 @@
 {% extends "base.html" %}
-{% block title %}Dashboard - Project Kashi{% endblock %}
+
+{% block title %}Dashboard — Project Kashi Banking System{% endblock %}
 
 {% block content %}
+
+{% if db_error %}
+<div class="card" style="border-left: 4px solid var(--danger);">
+    <div class="card-header" style="background-color: var(--danger-bg);">
+        <h3 style="color: var(--danger);">MySQL Database Connection Notice</h3>
+    </div>
+    <div class="card-body">
+        <p><strong>Status:</strong> {{ db_error }}</p>
+        <p style="margin-top: 0.5rem; color: var(--text-muted);">
+            To connect to your local MySQL server, ensure your MySQL service is running, create the database with <code>sql/schema.sql</code>, and update your credentials in the <code>.env</code> file (or copy from <code>.env.example</code>).
+        </p>
+    </div>
+</div>
+{% endif %}
+
 <div class="page-header">
     <div>
-        <h1 class="page-title">Banking Dashboard</h1>
-        <p class="page-subtitle">Live figures from the project_kashi MySQL database</p>
+        <h2 class="page-title">Executive Banking Dashboard</h2>
+        <p class="page-subtitle">Real-time indicators directly aggregated from MySQL relational tables</p>
     </div>
-    <div class="page-actions">
-        <a href="{{ url_for('customer_new') }}" class="btn btn-primary">Register Customer</a>
-        <a href="{{ url_for('account_open') }}" class="btn btn-secondary">Open Account</a>
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <a href="{{ url_for('customer_register') }}" class="btn btn-primary">+ New Customer</a>
+        <a href="{{ url_for('account_open') }}" class="btn btn-accent">+ Open Account</a>
+        <a href="{{ url_for('transfer') }}" class="btn btn-secondary">&rightleftharpoons; Fund Transfer</a>
     </div>
 </div>
 
+<!-- Key Performance Indicators (Direct from DB) -->
 <div class="stat-grid">
-    <div class="stat-card">
+    <div class="stat-card primary">
         <div class="stat-label">Total Customers</div>
-        <div class="stat-value">{{ total_customers }}</div>
-        <div class="stat-foot">Registered in CUSTOMER</div>
+        <div class="stat-value">{{ stats.customers }}</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-label">Active Accounts</div>
+        <div class="stat-value">{{ stats.active_accounts }} <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: normal;">/ {{ stats.accounts }}</span></div>
+    </div>
+    <div class="stat-card accent">
+        <div class="stat-label">Total Deposits Volume</div>
+        <div class="stat-value">{{ stats.total_deposits | currency }}</div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">Total Accounts</div>
-        <div class="stat-value">{{ total_accounts }}</div>
-        <div class="stat-foot">{{ active_accounts }} active accounts</div>
+        <div class="stat-label">Operating Branches</div>
+        <div class="stat-value">{{ stats.branches }}</div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">Branches</div>
-        <div class="stat-value">{{ total_branches }}</div>
-        <div class="stat-foot">Across all states</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-label">Transactions</div>
-        <div class="stat-value">{{ total_transactions }}</div>
-        <div class="stat-foot">Recorded in BANK_TRANSACTION</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-label">Active Balance</div>
-        <div class="stat-value">{{ total_balance|currency }}</div>
-        <div class="stat-foot">Sum of all account balances</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-label">Loans</div>
-        <div class="stat-value">{{ total_loans }}</div>
-        <div class="stat-foot">Across all loan statuses</div>
+        <div class="stat-label">Total Transactions</div>
+        <div class="stat-value">{{ stats.transactions }}</div>
     </div>
 </div>
 
-<div class="grid-2">
-    <section class="panel">
-        <div class="panel-header">
-            <h2 class="panel-title">Recent Transactions</h2>
-            <a href="{{ url_for('transactions') }}" class="link">View all</a>
-        </div>
-        <div class="table-wrap">
+<!-- Quick Action Shortcuts Panel -->
+<div class="card">
+    <div class="card-header">
+        <h3>Core Banking Operations</h3>
+    </div>
+    <div class="card-body" style="display: flex; gap: 1rem; flex-wrap: wrap;">
+        <a href="{{ url_for('deposit') }}" class="btn btn-success" style="flex: 1; min-width: 150px;">
+            <span>&darr;</span> Cash Deposit
+        </a>
+        <a href="{{ url_for('withdrawal') }}" class="btn btn-danger" style="flex: 1; min-width: 150px;">
+            <span>&uarr;</span> Withdrawal
+        </a>
+        <a href="{{ url_for('transfer') }}" class="btn btn-primary" style="flex: 1; min-width: 150px;">
+            <span>&rightleftharpoons;</span> Inter-Account Transfer
+        </a>
+        <a href="{{ url_for('loan_create') }}" class="btn btn-accent" style="flex: 1; min-width: 150px;">
+            <span>&#128176;</span> Sanction Loan
+        </a>
+        <a href="{{ url_for('business_queries') }}" class="btn btn-secondary" style="flex: 1; min-width: 150px;">
+            <span>&#128202;</span> 15 Business SQL Queries
+        </a>
+    </div>
+</div>
+
+<!-- Recent Transactions Table -->
+<div class="card">
+    <div class="card-header">
+        <h3>Recent Account Ledger Activity</h3>
+        <a href="{{ url_for('transactions') }}" class="btn btn-secondary btn-sm">View All Transactions &rarr;</a>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div class="table-responsive">
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>ID</th>
-                        <th>Account</th>
+                        <th>Ref Number</th>
+                        <th>Account #</th>
+                        <th>Customer</th>
                         <th>Type</th>
                         <th>Amount</th>
-                        <th>Date</th>
+                        <th>Date &amp; Time</th>
                         <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for t in recent_transactions %}
+                    {% for tx in recent_transactions %}
                     <tr>
-                        <td>{{ t.TransactionID }}</td>
-                        <td><a href="{{ url_for('account_detail', account_id=t.AccountID) }}" class="link">{{ t.AccountNumber }}</a></td>
-                        <td><span class="badge badge-{{ t.TransactionType|lower }}">{{ t.TransactionType.replace('_', ' ') }}</span></td>
-                        <td>{{ t.Amount|currency }}</td>
-                        <td>{{ t.TransactionDate|datetime }}</td>
-                        <td><span class="badge badge-{{ t.TransactionStatus|lower }}">{{ t.TransactionStatus|title }}</span></td>
+                        <td><code>{{ tx.ReferenceNumber }}</code></td>
+                        <td><strong>{{ tx.AccountNumber }}</strong></td>
+                        <td>{{ tx.FirstName }} {{ tx.LastName }}</td>
+                        <td>
+                            {% if tx.TransactionType in ['DEPOSIT', 'TRANSFER_IN'] %}
+                                <span class="badge badge-deposit">{{ tx.TransactionType }}</span>
+                            {% else %}
+                                <span class="badge badge-withdrawal">{{ tx.TransactionType }}</span>
+                            {% endif %}
+                        </td>
+                        <td><strong>{{ tx.Amount | currency }}</strong></td>
+                        <td>{{ tx.TransactionDate | dateformat("%d %b %Y, %I:%M %p") }}</td>
+                        <td>
+                            <span class="badge badge-active">{{ tx.TransactionStatus }}</span>
+                        </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="6" class="empty-state">No transactions recorded yet.</td></tr>
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                            No transaction records found. Load sample data using <code>sql/sample_data.sql</code> or perform a deposit.
+                        </td>
+                    </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-    </section>
-
-    <section class="panel">
-        <div class="panel-header">
-            <h2 class="panel-title">Branch Overview</h2>
-            <a href="{{ url_for('branches') }}" class="link">All branches</a>
-        </div>
-        <div class="table-wrap">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Branch</th>
-                        <th>City</th>
-                        <th>Accounts</th>
-                        <th>Balance</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for b in branch_summary %}
-                    <tr>
-                        <td>{{ b.BranchName }}</td>
-                        <td>{{ b.City }}</td>
-                        <td>{{ b.AccountCount }} ({{ b.ActiveAccountCount }} active)</td>
-                        <td>{{ b.TotalBalance|currency }}</td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="4" class="empty-state">No branches available.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </section>
+    </div>
 </div>
+
 {% endblock %}

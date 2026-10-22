@@ -1,58 +1,61 @@
 {% extends "base.html" %}
-{% block title %}Transfer - Project Kashi{% endblock %}
+
+{% block title %}Money Transfer — Project Kashi{% endblock %}
 
 {% block content %}
 <div class="page-header">
     <div>
-        <h1 class="page-title">Transfer Money</h1>
-        <p class="page-subtitle">Two balance updates and two transaction rows in one atomic MySQL transaction</p>
+        <h2 class="page-title">Inter-Account Money Transfer</h2>
+        <p class="page-subtitle">Atomic transfer between two accounts with deadlock-free ordered locking and rollback protection</p>
     </div>
 </div>
 
-<section class="panel form-panel">
-    <form method="post" action="{{ url_for('transfer') }}" class="form-grid" id="transferForm">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="form-group">
-            <label for="FromAccountID">From Account</label>
-            <select id="FromAccountID" name="FromAccountID" required class="input">
-                <option value="">-- Source --</option>
-                {% for a in accounts %}
-                {% if a.Status == 'Active' %}
-                <option value="{{ a.AccountID }}" {% if request.args.get('from_account')|int == a.AccountID %}selected{% endif %}>{{ a.AccountNumber }}</option>
-                {% endif %}
-                {% endfor %}
-            </select>
-        </div>
-        <div class="form-group">
-            <label for="ToAccountID">To Account</label>
-            <select id="ToAccountID" name="ToAccountID" required class="input">
-                <option value="">-- Destination --</option>
-                {% for a in accounts %}
-                {% if a.Status == 'Active' %}
-                <option value="{{ a.AccountID }}">{{ a.AccountNumber }}</option>
-                {% endif %}
-                {% endfor %}
-            </select>
-        </div>
-        <div class="form-group">
-            <label for="Amount">Amount (₹)</label>
-            <input type="number" step="0.01" min="0.01" id="Amount" name="Amount" required class="input">
-        </div>
-        <div class="form-group">
-            <label for="Description">Description</label>
-            <input type="text" id="Description" name="Description" value="Fund transfer" class="input" maxlength="200">
-        </div>
-        <div class="form-actions"><button type="submit" class="btn btn-primary" data-confirm="Transfer this amount between the selected accounts?">Transfer Funds</button></div>
-    </form>
-</section>
+<div class="card" style="max-width: 700px; margin: 0 auto;">
+    <div class="card-header">
+        <h3>Electronic Fund Transfer (EFT) Form</h3>
+    </div>
+    <div class="card-body">
+        <form id="transfer-form" method="POST" action="{{ url_for('transfer') }}">
+            <div class="form-group">
+                <label class="form-label" for="src_account_id">Source Account (Debit From) *</label>
+                <select id="src_account_id" name="src_account_id" class="form-control" required>
+                    <option value="">-- Choose Source Account --</option>
+                    {% for a in accounts %}
+                        <option value="{{ a.AccountID }}" {% if preselected_src == a.AccountID %}selected{% endif %}>
+                            {{ a.AccountNumber }} (Bal: {{ a.Balance | currency }}) — {{ a.PrimaryHolder or 'No Holder' }} [{{ a.BranchName }}]
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
 
-<section class="panel note-panel">
-    <h2 class="panel-title">Transfer rules</h2>
-    <ul class="process-list">
-        <li>Source and destination must be different Active accounts.</li>
-        <li>Rows are locked in AccountID order to reduce deadlock risk.</li>
-        <li>Both balances and both transaction records commit or roll back together.</li>
-        <li>TRANSFER_OUT and TRANSFER_IN share a common TransferGroupReference.</li>
-    </ul>
-</section>
+            <div class="form-group">
+                <label class="form-label" for="dest_account_id">Destination Account (Credit To) *</label>
+                <select id="dest_account_id" name="dest_account_id" class="form-control" required>
+                    <option value="">-- Choose Destination Account --</option>
+                    {% for a in accounts %}
+                        <option value="{{ a.AccountID }}">
+                            {{ a.AccountNumber }} — {{ a.PrimaryHolder or 'No Holder' }} [{{ a.BranchName }}]
+                        </option>
+                    {% endfor %}
+                </select>
+                <p class="form-help">Source and destination accounts must be distinct active accounts.</p>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="amount">Transfer Amount (₹) *</label>
+                <input type="number" id="amount" name="amount" class="form-control" min="1" step="0.01" placeholder="Enter transfer amount (e.g. 5000.00)" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="description">Purpose / Description</label>
+                <input type="text" id="description" name="description" class="form-control" placeholder="e.g. Monthly rent remittance">
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Authorize &amp; Execute Transfer</button>
+                <a href="{{ url_for('account_list') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}

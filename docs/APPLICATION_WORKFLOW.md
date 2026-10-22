@@ -1,118 +1,124 @@
-# Application Workflow
+# Application Workflow & Architecture — Project Kashi
 
-## Three-layer architecture
+This document details the three-layer architecture and operational workflows of **Project Kashi — Banking Management System**.
 
-```text
-Browser (HTML + CSS + JavaScript)
-        |
-        | HTTP GET / POST (form data, CSRF token)
-        v
-Flask application (app.py, db.py, config.py)
-        |
-        | parameterized mysql-connector-python calls
-        v
-MySQL 8.0 (project_kashi tables, constraints, views, routines, triggers)
-```
+---
 
-1. **Presentation layer:** Jinja templates in `templates/`, styling in `static/css/style.css`, and small behaviours in `static/js/main.js`.
-2. **Application layer:** Flask routes validate input, apply business rules, start transactions, and choose the response.
-3. **Data layer:** MySQL stores data and enforces keys, checks, foreign keys, locks, triggers, and routines.
+## 1. Three-Layer System Architecture
 
-## General request flow
+Project Kashi follows the classical enterprise **Three-Tier Architecture**:
 
 ```text
-HTML form
-  -> POST request with CSRF token
-  -> Flask route
-  -> server-side validation
-  -> parameterized SQL / MySQL transaction
-  -> commit or rollback
-  -> flash message
-  -> redirect to a GET page
-  -> Jinja renders database rows
++-------------------------------------------------------------+
+|             PRESENTATION LAYER (Frontend HTML/CSS)          |
+|  - Raw semantic HTML5 forms & Jinja2 dynamic templates      |
+|  - Custom CSS styling system with modern banking dashboard  |
+|  - Minimal vanilla JS for state confirmation & alert timers |
++-------------------------------------------------------------+
+                              |
+                     HTTP POST / GET Requests
+                              v
++-------------------------------------------------------------+
+|             APPLICATION LOGIC LAYER (Python Flask)          |
+|  - Flask WSGI web server & routing endpoints (app.py)       |
+|  - Server-side input sanitization & business validation     |
+|  - Atomic ACID transaction coordination & session handling  |
+|  - Parameterized query dispatch layer (db.py)               |
++-------------------------------------------------------------+
+                              |
+                    MySQL Connector (TCP/IP 3306)
+                              v
++-------------------------------------------------------------+
+|              DATA STORAGE LAYER (MySQL 8.0 RDBMS)           |
+|  - Relational tables in Third Normal Form (3NF)             |
+|  - Constraints: PK, FK, UNIQUE, CHECK, NOT NULL             |
+|  - Row-level pessimistic locking (SELECT ... FOR UPDATE)    |
+|  - Triggers, Stored Procedures, Functions, and Views        |
++-------------------------------------------------------------+
 ```
 
-## Customer registration
+---
 
-1. User opens `/customers/new`.
-2. The route renders `customer_form.html` with a CSRF token.
-3. The form posts first name, last name, date of birth, gender, mobile, email, address, and city.
-4. Flask checks required fields, name lengths, allowed gender, mobile pattern, email pattern, date validity, and field lengths.
-5. The application runs a parameterized `INSERT INTO CUSTOMER`.
-6. Unique constraints reject duplicate mobile/email. The route converts that into a friendly message.
-7. On success, Flask flashes a message and redirects to `/customers`; the new row is read from MySQL.
+## 2. Universal Data Lifecycle Flow
 
-## Account opening
+Every transactional operation in Project Kashi adheres to this strict sequence:
 
-1. The form loads customers and branches from the database.
-2. The user selects a customer, account type, branch, holder type, and optional initial deposit.
-3. Flask validates IDs, type, holder type, and amount.
-4. A 12-digit account number is generated with `secrets`.
-5. One MySQL transaction performs:
-   - `INSERT INTO ACCOUNT`;
-   - `INSERT INTO ACCOUNT_HOLDER` with HolderType;
-   - if the opening deposit is greater than zero, `INSERT INTO BANK_TRANSACTION` as a DEPOSIT.
-6. Any failure rolls back all three steps. The account and holder cannot be half-created.
-7. On success the user sees the generated account number.
+1. **User Form Submission**: The user fills in inputs on an HTML form and submits via HTTP POST.
+2. **Flask Route Reception**: Flask intercepts the request at a designated endpoint (e.g., `@app.route('/transfer', methods=['POST'])`).
+3. **Server-Side Validation**:
+   - Compulsory presence checks (e.g., account IDs, non-empty fields).
+   - Domain validation (e.g., amounts strictly $> 0$, 10-digit mobile number regex).
+   - Logical validation (e.g., ensuring source account $\neq$ destination account).
+4. **Database Transaction Initiation**: Flask opens a MySQL connection with `autocommit = False`.
+5. **Pessimistic Row Locking**: Target account rows are locked using `SELECT ... FOR UPDATE`.
+6. **Integrity Validation**: Account status (`'Active'`) and sufficient balance checks are verified against real-time database locks.
+7. **Parameterized Execution**: SQL statements execute using `%s` placeholders, completely preventing SQL Injection vulnerabilities.
+8. **Atomic Commit or Rollback**:
+   - If **all** operations succeed $\rightarrow$ `conn.commit()`.
+   - If **any** operation fails or throws an exception $\rightarrow$ `conn.rollback()`.
+9. **Flash Notification & Redirect**: Flask renders a user-friendly flash alert and redirects to the updated account or ledger view.
 
-## Deposit
+---
 
-1. User selects an active account and enters a positive amount.
-2. Flask parses the amount as a decimal with at most two decimal places.
-3. Inside a transaction, `SELECT ... FOR UPDATE` locks the account row.
-4. The route verifies that the account exists and is Active.
-5. It updates `Balance = Balance + amount`.
-6. It inserts a `DEPOSIT` row with status `SUCCESS` and a unique reference.
-7. `COMMIT` makes both changes durable. Any error calls `ROLLBACK`.
+## 3. Specific Operational Workflows
 
-## Withdrawal
+### A. Customer Registration Workflow
+1. User enters demographic details in `customer_form.html`.
+2. Flask validates name strings, 10-digit phone number, and standard email regex.
+3. Flask verifies that neither `Email` nor `Mobile` already exists in `CUSTOMER`.
+4. Executes:
+   ```sql
+   INSERT INTO CUSTOMER (FirstName, LastName, DateOfBirth, Gender, Mobile, Email, Address, City)
+   VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+   ```
+5. On success, redirects the user to `customer_detail.html` displaying their new `CustomerID`.
 
-1. The account is locked with `FOR UPDATE`.
-2. Flask verifies Active status.
-3. It compares the balance with the requested amount.
-4. If funds are insufficient, it raises a business error; the transaction rolls back.
-5. Otherwise it subtracts the amount and inserts a `WITHDRAWAL` row.
-6. The `chk_account_balance` constraint provides a second database-level guard against a negative balance.
-7. Commit or rollback.
+### B. Account Opening Workflow (Atomic Composite Operation)
+1. User selects customer, branch, account type, and initial deposit amount.
+2. Flask executes `open_account_transaction()` within a single transactional boundary:
+   - Step 1: Generates a 10-digit account number.
+   - Step 2: Inserts a record into `ACCOUNT` with the initial balance.
+   - Step 3: Inserts an ownership row into `ACCOUNT_HOLDER` with `HolderType = 'Primary'`.
+   - Step 4: If `opening_balance > 0`, inserts an initial `DEPOSIT` record into `BANK_TRANSACTION`.
+   - Step 5: Issues `conn.commit()`.
+3. If any step fails (e.g., foreign key violation), the entire sequence is rolled back, preventing orphaned accounts.
 
-## Transfer
+### C. Cash Deposit Workflow
+1. User selects account and specifies deposit amount.
+2. Flask validates `amount > 0`.
+3. Locks the account row: `SELECT Balance, Status FROM ACCOUNT WHERE AccountID = %s FOR UPDATE`.
+4. Verifies `Status == 'Active'`.
+5. Increments balance: `UPDATE ACCOUNT SET Balance = Balance + %s WHERE AccountID = %s`.
+6. Inserts immutable transaction entry:
+   ```sql
+   INSERT INTO BANK_TRANSACTION (AccountID, TransactionType, Amount, Description, ReferenceNumber, TransactionStatus)
+   VALUES (%s, 'DEPOSIT', %s, %s, %s, 'SUCCESS');
+   ```
+7. Issues `conn.commit()`.
 
-1. Flask validates two distinct account IDs and a positive amount.
-2. It locks both account rows in ascending `AccountID` order using one `SELECT ... FOR UPDATE`.
-3. It verifies that both accounts exist and are Active.
-4. It checks the source balance.
-5. It updates both balances.
-6. It inserts two rows:
-   - `TRANSFER_OUT` for the source;
-   - `TRANSFER_IN` for the destination.
-7. Both rows share a `TransferGroupReference`, while each has its own unique `ReferenceNumber`.
-8. One `COMMIT` or one `ROLLBACK` covers all four changes.
+### D. Cash Withdrawal Workflow
+1. User selects account and requests withdrawal amount.
+2. Locks account row: `SELECT Balance, Status FROM ACCOUNT WHERE AccountID = %s FOR UPDATE`.
+3. Verifies `Status == 'Active'`.
+4. Verifies `Balance >= amount`. If insufficient, triggers immediate rollback and flashes an error message showing available balance.
+5. Deducts balance: `UPDATE ACCOUNT SET Balance = Balance - %s WHERE AccountID = %s`.
+6. Inserts `WITHDRAWAL` transaction into `BANK_TRANSACTION`.
+7. Issues `conn.commit()`.
 
-## Account status
-
-- Active, Inactive, and Closed are supported.
-- The app blocks reopening a Closed account.
-- It blocks closing an account with a non-zero balance.
-- The `trg_account_status_before_update` trigger repeats these rules at database level.
-- Only Active accounts can receive new deposits, withdrawals, or transfers.
-
-## Loan workflow
-
-```text
-New application -> Pending
-Pending -> Approved or Rejected
-Approved + payment -> outstanding decreases
-Outstanding reaches zero -> Closed by trigger
-```
-
-- A new loan always starts as `Pending`, regardless of what the user might want.
-- The Approve/Reject buttons are POST routes protected by CSRF.
-- Only a Pending loan can be approved or rejected; the row is locked during the decision.
-- Payments are allowed only for Approved loans.
-- `trg_loan_payment_before_insert` rejects overpayment.
-- `trg_loan_payment_after_insert` changes the loan to `Closed` when total payments reach the loan amount.
-- Outstanding is derived, not manually edited.
-
-## Dashboard
-
-The dashboard runs aggregate queries and `vw_branch_summary` on every request. It displays actual rows from MySQL. No customer or transaction numbers are hardcoded in the HTML.
+### E. Inter-Account Transfer Workflow (ACID Showcase)
+1. User selects Source Account, Destination Account, and Transfer Amount.
+2. **Deadlock Prevention**: Accounts are sorted by ID (`min_id = min(src, dest)`, `max_id = max(src, dest)`). Locks are acquired in strict ascending order:
+   ```sql
+   SELECT ... FROM ACCOUNT WHERE AccountID = min_id FOR UPDATE;
+   SELECT ... FROM ACCOUNT WHERE AccountID = max_id FOR UPDATE;
+   ```
+3. Verifies both accounts exist and are in `'Active'` status.
+4. Verifies source account has sufficient funds (`src_balance >= amount`).
+5. Generates a shared common reference number (e.g., `TRF202610221600101X4`).
+6. Executes dual updates:
+   - Debit source: `UPDATE ACCOUNT SET Balance = Balance - %s WHERE AccountID = %s;`
+   - Credit destination: `UPDATE ACCOUNT SET Balance = Balance + %s WHERE AccountID = %s;`
+7. Inserts paired audit transactions sharing the identical `ReferenceNumber`:
+   - `TRANSFER_OUT` row on source account.
+   - `TRANSFER_IN` row on destination account.
+8. Calls `conn.commit()`. If an exception occurs at any point, `conn.rollback()` restores both accounts to their original state.

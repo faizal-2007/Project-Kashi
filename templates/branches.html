@@ -1,34 +1,58 @@
 {% extends "base.html" %}
-{% block title %}Branches - Project Kashi{% endblock %}
+
+{% block title %}Branches — Project Kashi{% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <div><h1 class="page-title">Branches</h1><p class="page-subtitle">Branch network with account and employee counts</p></div>
-    <div class="page-actions"><a href="{{ url_for('branch_new') }}" class="btn btn-primary">Add Branch</a></div>
+    <div>
+        <h2 class="page-title">Bank Branches</h2>
+        <p class="page-subtitle">Administrative network locations, IFSC routing codes, and branch performance</p>
+    </div>
+    <a href="{{ url_for('branch_create') }}" class="btn btn-primary">+ Add New Branch</a>
 </div>
 
-<section class="panel">
-    <div class="table-wrap">
-        <table class="data-table">
-            <thead><tr><th>ID</th><th>Branch</th><th>IFSC</th><th>City</th><th>State</th><th>Employees</th><th>Accounts</th><th>Active</th><th>Total Balance</th></tr></thead>
-            <tbody>
-            {% for b in branches %}
-                <tr>
-                    <td>{{ b.BranchID }}</td>
-                    <td>{{ b.BranchName }}</td>
-                    <td>{{ b.IFSCCode }}</td>
-                    <td>{{ b.City }}</td>
-                    <td>{{ b.State }}</td>
-                    <td>{{ b.EmployeeCount }}</td>
-                    <td>{{ b.AccountCount }}</td>
-                    <td>{{ b.ActiveAccountCount }}</td>
-                    <td>{{ b.TotalBalance|currency }}</td>
-                </tr>
-            {% else %}
-                <tr><td colspan="9" class="empty-state">No branches configured.</td></tr>
-            {% endfor %}
-            </tbody>
-        </table>
+<div class="card">
+    <div class="card-body" style="padding: 0;">
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Branch ID</th>
+                        <th>Branch Name</th>
+                        <th>IFSC Code</th>
+                        <th>City</th>
+                        <th>State</th>
+                        <th>Contact Number</th>
+                        <th>Active Accounts</th>
+                        <th>Total Deposits</th>
+                        <th>Staff Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for b in branches %}
+                    <tr>
+                        <td>#{{ b.BranchID }}</td>
+                        <td><strong>{{ b.BranchName }}</strong></td>
+                        <td><code>{{ b.IFSCCode }}</code></td>
+                        <td>{{ b.City }}</td>
+                        <td>{{ b.State }}</td>
+                        <td>{{ b.ContactNumber }}</td>
+                        <td>
+                            <span class="badge badge-primary-holder">{{ b.TotalAccounts }}</span>
+                        </td>
+                        <td><strong>{{ b.TotalDeposits | currency }}</strong></td>
+                        <td>{{ b.TotalEmployees }} Staff</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                            No branches found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
-</section>
+</div>
 {% endblock %}

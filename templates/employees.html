@@ -1,33 +1,56 @@
 {% extends "base.html" %}
-{% block title %}Employees - Project Kashi{% endblock %}
+
+{% block title %}Employees — Project Kashi{% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <div><h1 class="page-title">Employees</h1><p class="page-subtitle">Staff members linked to branches by foreign key</p></div>
-    <div class="page-actions"><a href="{{ url_for('employee_new') }}" class="btn btn-primary">Add Employee</a></div>
+    <div>
+        <h2 class="page-title">Employee Roster</h2>
+        <p class="page-subtitle">Bank staff, designations, branch affiliations, and salary administration</p>
+    </div>
+    <a href="{{ url_for('employee_create') }}" class="btn btn-primary">+ Add New Employee</a>
 </div>
 
-<section class="panel">
-    <div class="table-wrap">
-        <table class="data-table">
-            <thead><tr><th>ID</th><th>Name</th><th>Designation</th><th>Mobile</th><th>Email</th><th>Salary</th><th>Joining Date</th><th>Branch</th></tr></thead>
-            <tbody>
-            {% for e in employees %}
-                <tr>
-                    <td>{{ e.EmployeeID }}</td>
-                    <td>{{ e.EmployeeName }}</td>
-                    <td>{{ e.Designation }}</td>
-                    <td>{{ e.Mobile }}</td>
-                    <td>{{ e.Email }}</td>
-                    <td>{{ e.Salary|currency }}</td>
-                    <td>{{ e.JoiningDate }}</td>
-                    <td>{{ e.BranchName }}</td>
-                </tr>
-            {% else %}
-                <tr><td colspan="8" class="empty-state">No employees recorded.</td></tr>
-            {% endfor %}
-            </tbody>
-        </table>
+<div class="card">
+    <div class="card-body" style="padding: 0;">
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Emp ID</th>
+                        <th>Employee Name</th>
+                        <th>Designation</th>
+                        <th>Branch</th>
+                        <th>Mobile</th>
+                        <th>Email</th>
+                        <th>Salary</th>
+                        <th>Joining Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in employees %}
+                    <tr>
+                        <td>#{{ e.EmployeeID }}</td>
+                        <td><strong>{{ e.EmployeeName }}</strong></td>
+                        <td>
+                            <span class="badge badge-primary-holder">{{ e.Designation }}</span>
+                        </td>
+                        <td>{{ e.BranchName }} ({{ e.BranchCity }})</td>
+                        <td>{{ e.Mobile }}</td>
+                        <td>{{ e.Email }}</td>
+                        <td><strong>{{ e.Salary | currency }}</strong></td>
+                        <td>{{ e.JoiningDate | dateformat }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                            No employee records found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
-</section>
+</div>
 {% endblock %}

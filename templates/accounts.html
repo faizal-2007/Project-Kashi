@@ -1,50 +1,93 @@
 {% extends "base.html" %}
-{% block title %}Accounts - Project Kashi{% endblock %}
+
+{% block title %}Accounts — Project Kashi{% endblock %}
 
 {% block content %}
 <div class="page-header">
     <div>
-        <h1 class="page-title">Accounts</h1>
-        <p class="page-subtitle">All accounts with holders and branch information</p>
+        <h2 class="page-title">Accounts Central Register</h2>
+        <p class="page-subtitle">View and audit all banking deposit accounts and ownership relationships</p>
     </div>
-    <div class="page-actions">
-        <a href="{{ url_for('account_open') }}" class="btn btn-primary">Open Account</a>
-        <a href="{{ url_for('deposit') }}" class="btn btn-secondary">Deposit</a>
-        <a href="{{ url_for('withdraw') }}" class="btn btn-secondary">Withdraw</a>
-    </div>
+    <a href="{{ url_for('account_open') }}" class="btn btn-primary">+ Open New Account</a>
 </div>
 
-<section class="panel">
-    <div class="panel-header">
-        <form action="{{ url_for('accounts') }}" method="get" class="search-form">
-            <input type="text" name="q" value="{{ search }}" placeholder="Search by account number or branch" class="input">
-            <button type="submit" class="btn btn-secondary">Search</button>
-            {% if search %}<a href="{{ url_for('accounts') }}" class="link">Clear</a>{% endif %}
-        </form>
+<!-- Search & Status Filter Bar -->
+<div class="filter-bar">
+    <form method="GET" action="{{ url_for('account_list') }}">
+        <input type="text" name="search" class="form-control filter-input" placeholder="Search by account number, holder, or branch..." value="{{ search }}">
+        
+        <select name="type" class="form-control" style="width: 140px;">
+            <option value="">All Types</option>
+            <option value="Saving" {% if type_filter == 'Saving' %}selected{% endif %}>Saving</option>
+            <option value="Current" {% if type_filter == 'Current' %}selected{% endif %}>Current</option>
+            <option value="Salary" {% if type_filter == 'Salary' %}selected{% endif %}>Salary</option>
+        </select>
+
+        <select name="status" class="form-control" style="width: 140px;">
+            <option value="">All Statuses</option>
+            <option value="Active" {% if status_filter == 'Active' %}selected{% endif %}>Active</option>
+            <option value="Inactive" {% if status_filter == 'Inactive' %}selected{% endif %}>Inactive</option>
+            <option value="Closed" {% if status_filter == 'Closed' %}selected{% endif %}>Closed</option>
+        </select>
+
+        <button type="submit" class="btn btn-primary">Filter</button>
+        {% if search or status_filter or type_filter %}
+            <a href="{{ url_for('account_list') }}" class="btn btn-secondary">Reset</a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- Accounts List -->
+<div class="card">
+    <div class="card-body" style="padding: 0;">
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Account #</th>
+                        <th>Account Holders</th>
+                        <th>Type</th>
+                        <th>Branch</th>
+                        <th>IFSC</th>
+                        <th>Balance</th>
+                        <th>Opening Date</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in accounts %}
+                    <tr>
+                        <td><strong>{{ a.AccountNumber }}</strong></td>
+                        <td>{{ a.Holders or 'None linked' }}</td>
+                        <td>{{ a.AccountType }}</td>
+                        <td>{{ a.BranchName }}</td>
+                        <td><code>{{ a.IFSCCode }}</code></td>
+                        <td><strong style="font-size: 1rem;">{{ a.Balance | currency }}</strong></td>
+                        <td>{{ a.OpeningDate | dateformat }}</td>
+                        <td>
+                            {% if a.Status == 'Active' %}
+                                <span class="badge badge-active">Active</span>
+                            {% elif a.Status == 'Inactive' %}
+                                <span class="badge badge-inactive">Inactive</span>
+                            {% else %}
+                                <span class="badge badge-closed">Closed</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('account_detail', account_id=a.AccountID) }}" class="btn btn-secondary btn-sm">Manage &rarr;</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                            No accounts found matching current filters.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
-    <div class="table-wrap">
-        <table class="data-table">
-            <thead>
-                <tr><th>Account No.</th><th>Type</th><th>Balance</th><th>Status</th><th>Branch</th><th>IFSC</th><th>Holders</th><th>Opened</th><th>Action</th></tr>
-            </thead>
-            <tbody>
-                {% for a in accounts %}
-                <tr>
-                    <td>{{ a.AccountNumber }}</td>
-                    <td>{{ a.AccountType }}</td>
-                    <td>{{ a.Balance|currency }}</td>
-                    <td><span class="badge badge-{{ a.Status|lower }}">{{ a.Status }}</span></td>
-                    <td>{{ a.BranchName }}</td>
-                    <td>{{ a.IFSCCode }}</td>
-                    <td>{{ a.Holders or '-' }}</td>
-                    <td>{{ a.OpeningDate|datetime }}</td>
-                    <td><a href="{{ url_for('account_detail', account_id=a.AccountID) }}" class="link">View</a></td>
-                </tr>
-                {% else %}
-                <tr><td colspan="9" class="empty-state">No accounts found.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</section>
+</div>
 {% endblock %}

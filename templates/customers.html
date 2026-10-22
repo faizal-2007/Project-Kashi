@@ -1,58 +1,70 @@
 {% extends "base.html" %}
-{% block title %}Customers - Project Kashi{% endblock %}
+
+{% block title %}Customers — Project Kashi{% endblock %}
 
 {% block content %}
 <div class="page-header">
     <div>
-        <h1 class="page-title">Customers</h1>
-        <p class="page-subtitle">Registered customers and their account/loan counts</p>
+        <h2 class="page-title">Customer Directory</h2>
+        <p class="page-subtitle">Manage customer profiles and account affiliations</p>
     </div>
-    <div class="page-actions">
-        <a href="{{ url_for('customer_new') }}" class="btn btn-primary">Register New Customer</a>
-    </div>
+    <a href="{{ url_for('customer_register') }}" class="btn btn-primary">+ Register Customer</a>
 </div>
 
-<section class="panel">
-    <div class="panel-header">
-        <form action="{{ url_for('customers') }}" method="get" class="search-form">
-            <input type="text" name="q" value="{{ search }}" placeholder="Search by name, mobile, or email" class="input">
-            <button type="submit" class="btn btn-secondary">Search</button>
-            {% if search %}<a href="{{ url_for('customers') }}" class="link">Clear</a>{% endif %}
-        </form>
+<!-- Search & Filter Bar -->
+<div class="filter-bar">
+    <form method="GET" action="{{ url_for('customer_list') }}">
+        <input type="text" name="search" class="form-control filter-input" placeholder="Search by name, email, mobile, or city..." value="{{ search }}">
+        <button type="submit" class="btn btn-primary">Search</button>
+        {% if search %}
+            <a href="{{ url_for('customer_list') }}" class="btn btn-secondary">Clear</a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- Customers Table -->
+<div class="card">
+    <div class="card-body" style="padding: 0;">
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Full Name</th>
+                        <th>Mobile</th>
+                        <th>Email</th>
+                        <th>City</th>
+                        <th>Accounts</th>
+                        <th>Registered Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in customers %}
+                    <tr>
+                        <td>#{{ c.CustomerID }}</td>
+                        <td><strong>{{ c.FirstName }} {{ c.LastName }}</strong></td>
+                        <td>{{ c.Mobile }}</td>
+                        <td>{{ c.Email }}</td>
+                        <td>{{ c.City }}</td>
+                        <td>
+                            <span class="badge badge-primary-holder">{{ c.AccountCount }} Account(s)</span>
+                        </td>
+                        <td>{{ c.RegistrationDate | dateformat }}</td>
+                        <td>
+                            <a href="{{ url_for('customer_detail', customer_id=c.CustomerID) }}" class="btn btn-secondary btn-sm">Portfolio &rarr;</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                            No customers found matching your criteria.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
-    <div class="table-wrap">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Mobile</th>
-                    <th>Email</th>
-                    <th>City</th>
-                    <th>Registered</th>
-                    <th>Accounts</th>
-                    <th>Loans</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for c in customers %}
-                <tr>
-                    <td>{{ c.CustomerID }}</td>
-                    <td>{{ c.FirstName }} {{ c.LastName }}</td>
-                    <td>{{ c.Mobile }}</td>
-                    <td>{{ c.Email }}</td>
-                    <td>{{ c.City }}</td>
-                    <td>{{ c.RegistrationDate|datetime }}</td>
-                    <td>{{ c.account_count }}</td>
-                    <td>{{ c.loan_count }}</td>
-                    <td><a href="{{ url_for('customer_detail', customer_id=c.CustomerID) }}" class="link">View</a></td>
-                </tr>
-                {% else %}
-                <tr><td colspan="9" class="empty-state">No customers found.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</section>
+</div>
 {% endblock %}

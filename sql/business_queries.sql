@@ -1,227 +1,282 @@
--- Project Kashi - SQL business problems
--- Run after loading schema.sql and sample_data.sql.
+-- ============================================================================
+-- PROJECT KASHI — BANKING MANAGEMENT SYSTEM
+-- Script: business_queries.sql
+-- Purpose: 15 Real-World SQL Business Queries with Explanations & Concepts
+-- Database: project_kashi
+-- ============================================================================
+
 USE project_kashi;
 
--- 1. Display all customers with their accounts.
-SELECT
+-- ----------------------------------------------------------------------------
+-- PROBLEM 1: Display all customers along with their linked bank accounts.
+-- Purpose: Customer 360-degree overview of accounts held.
+-- DBMS Concepts: Multi-table INNER JOIN, String Concatenation.
+-- Expected Columns: CustomerID, FullName, Email, AccountNumber, AccountType, Balance, BranchName
+-- ----------------------------------------------------------------------------
+SELECT 
     c.CustomerID,
-    CONCAT(c.FirstName, ' ', c.LastName) AS CustomerName,
-    c.Mobile,
+    CONCAT(c.FirstName, ' ', c.LastName) AS FullName,
+    c.Email,
     a.AccountNumber,
     a.AccountType,
     a.Balance,
-    a.Status AS AccountStatus,
     b.BranchName
 FROM CUSTOMER c
-JOIN ACCOUNT_HOLDER ah ON ah.CustomerID = c.CustomerID
-JOIN ACCOUNT a ON a.AccountID = ah.AccountID
-JOIN BRANCH b ON b.BranchID = a.BranchID
-ORDER BY c.CustomerID, a.AccountID;
+JOIN ACCOUNT_HOLDER ah ON c.CustomerID = ah.CustomerID
+JOIN ACCOUNT a ON ah.AccountID = a.AccountID
+JOIN BRANCH b ON a.BranchID = b.BranchID
+ORDER BY c.CustomerID, a.AccountNumber;
 
--- 2. Find customers who hold more than one account.
-SELECT
+-- ----------------------------------------------------------------------------
+-- PROBLEM 2: Find customers who hold multiple bank accounts.
+-- Purpose: Identify high-engagement customers eligible for relationship banking.
+-- DBMS Concepts: GROUP BY, HAVING COUNT(*) > 1, Aggregation.
+-- Expected Columns: CustomerID, FullName, Mobile, TotalAccountsOwned
+-- ----------------------------------------------------------------------------
+SELECT 
     c.CustomerID,
-    CONCAT(c.FirstName, ' ', c.LastName) AS CustomerName,
-    COUNT(DISTINCT ah.AccountID) AS NumberOfAccounts
+    CONCAT(c.FirstName, ' ', c.LastName) AS FullName,
+    c.Mobile,
+    COUNT(ah.AccountID) AS TotalAccountsOwned
 FROM CUSTOMER c
-JOIN ACCOUNT_HOLDER ah ON ah.CustomerID = c.CustomerID
-GROUP BY c.CustomerID, c.FirstName, c.LastName
-HAVING COUNT(DISTINCT ah.AccountID) > 1
-ORDER BY NumberOfAccounts DESC, c.CustomerID;
+JOIN ACCOUNT_HOLDER ah ON c.CustomerID = ah.CustomerID
+GROUP BY c.CustomerID, c.FirstName, c.LastName, c.Mobile
+HAVING COUNT(ah.AccountID) > 1
+ORDER BY TotalAccountsOwned DESC;
 
--- 3. Display accounts with their branch details.
-SELECT
+-- ----------------------------------------------------------------------------
+-- PROBLEM 3: Display all bank accounts with their branch details and manager name.
+-- Purpose: Audit branch account ownership and managerial responsibility.
+-- DBMS Concepts: Multi-table JOIN with self-filtering / conditional join on Employee designation.
+-- Expected Columns: AccountNumber, AccountType, Balance, Status, BranchName, BranchCity, BranchManager
+-- ----------------------------------------------------------------------------
+SELECT 
     a.AccountNumber,
     a.AccountType,
     a.Balance,
     a.Status,
     b.BranchName,
-    b.IFSCCode,
-    b.City,
-    b.State
+    b.City AS BranchCity,
+    e.EmployeeName AS BranchManager
 FROM ACCOUNT a
-JOIN BRANCH b ON b.BranchID = a.BranchID
+JOIN BRANCH b ON a.BranchID = b.BranchID
+LEFT JOIN EMPLOYEE e ON b.BranchID = e.BranchID AND e.Designation = 'Branch Manager'
 ORDER BY b.BranchName, a.AccountNumber;
 
--- 4. Calculate the total balance held by accounts in each branch.
-SELECT
+-- ----------------------------------------------------------------------------
+-- PROBLEM 4: Calculate the total deposits and average account balance for each branch.
+-- Purpose: Assess financial performance and liquidity distribution per branch.
+-- DBMS Concepts: GROUP BY, Aggregate functions (SUM, AVG, COUNT), Formatting.
+-- Expected Columns: BranchID, BranchName, ActiveAccountsCount, TotalDeposits, AverageBalance
+-- ----------------------------------------------------------------------------
+SELECT 
     b.BranchID,
     b.BranchName,
-    COUNT(a.AccountID) AS AccountCount,
-    COALESCE(SUM(a.Balance), 0) AS TotalBalance
+    COUNT(a.AccountID) AS ActiveAccountsCount,
+    COALESCE(SUM(a.Balance), 0.00) AS TotalDeposits,
+    COALESCE(ROUND(AVG(a.Balance), 2), 0.00) AS AverageBalance
 FROM BRANCH b
-LEFT JOIN ACCOUNT a ON a.BranchID = b.BranchID
+LEFT JOIN ACCOUNT a ON b.BranchID = a.BranchID AND a.Status = 'Active'
 GROUP BY b.BranchID, b.BranchName
-ORDER BY TotalBalance DESC;
+ORDER BY TotalDeposits DESC;
 
--- 5. Find accounts whose balance is above 100000.
-SELECT
+-- ----------------------------------------------------------------------------
+-- PROBLEM 5: Find accounts with balances above the overall bank-wide average balance.
+-- Purpose: Identify high-net-worth accounts for premium wealth management services.
+-- DBMS Concepts: Scalar Subquery, WHERE filter with nested SELECT.
+-- Expected Columns: AccountNumber, AccountType, Balance, Status, BranchName
+-- ----------------------------------------------------------------------------
+SELECT 
     a.AccountNumber,
     a.AccountType,
     a.Balance,
     a.Status,
     b.BranchName
 FROM ACCOUNT a
-JOIN BRANCH b ON b.BranchID = a.BranchID
-WHERE a.Balance > 100000
+JOIN BRANCH b ON a.BranchID = b.BranchID
+WHERE a.Balance > (
+    SELECT AVG(Balance) FROM ACCOUNT WHERE Status = 'Active'
+)
 ORDER BY a.Balance DESC;
 
--- 6. Calculate total successful deposits for every account.
-SELECT
+-- ----------------------------------------------------------------------------
+-- PROBLEM 6: Calculate total deposits, total withdrawals, and net volume by account.
+-- Purpose: Profile transactional velocity and cash-flow activity per account.
+-- DBMS Concepts: Conditional aggregation (SUM CASE), LEFT JOIN, GROUP BY.
+-- Expected Columns: AccountNumber, AccountType, TotalDeposited, TotalWithdrawn, NetCashFlow
+-- ----------------------------------------------------------------------------
+SELECT 
     a.AccountNumber,
-    COALESCE(SUM(CASE
-        WHEN t.TransactionType = 'DEPOSIT' AND t.TransactionStatus = 'SUCCESS'
-        THEN t.Amount ELSE 0 END), 0) AS TotalDeposits
+    a.AccountType,
+    COALESCE(SUM(CASE WHEN t.TransactionType IN ('DEPOSIT', 'TRANSFER_IN') THEN t.Amount ELSE 0 END), 0.00) AS TotalInflow,
+    COALESCE(SUM(CASE WHEN t.TransactionType IN ('WITHDRAWAL', 'TRANSFER_OUT') THEN t.Amount ELSE 0 END), 0.00) AS TotalOutflow,
+    COALESCE(SUM(CASE WHEN t.TransactionType IN ('DEPOSIT', 'TRANSFER_IN') THEN t.Amount ELSE -t.Amount END), 0.00) AS NetTransactionVolume
 FROM ACCOUNT a
-LEFT JOIN BANK_TRANSACTION t ON t.AccountID = a.AccountID
-GROUP BY a.AccountID, a.AccountNumber
-ORDER BY TotalDeposits DESC;
+LEFT JOIN BANK_TRANSACTION t ON a.AccountID = t.AccountID AND t.TransactionStatus = 'SUCCESS'
+GROUP BY a.AccountID, a.AccountNumber, a.AccountType
+ORDER BY NetTransactionVolume DESC;
 
--- 7. Calculate total successful withdrawals for every account.
-SELECT
-    a.AccountNumber,
-    COALESCE(SUM(CASE
-        WHEN t.TransactionType = 'WITHDRAWAL' AND t.TransactionStatus = 'SUCCESS'
-        THEN t.Amount ELSE 0 END), 0) AS TotalWithdrawals
-FROM ACCOUNT a
-LEFT JOIN BANK_TRANSACTION t ON t.AccountID = a.AccountID
-GROUP BY a.AccountID, a.AccountNumber
-ORDER BY TotalWithdrawals DESC;
-
--- 8. Display transaction history for a selected customer (CustomerID = 1).
-SELECT
+-- ----------------------------------------------------------------------------
+-- PROBLEM 7: Display complete transaction statement for a selected customer.
+-- Purpose: Generate an official customer account statement / passbook view.
+-- DBMS Concepts: 4-table JOIN (CUSTOMER -> ACCOUNT_HOLDER -> ACCOUNT -> BANK_TRANSACTION).
+-- Expected Columns: TransactionID, ReferenceNumber, TransactionDate, AccountNumber, TransactionType, Amount, Description
+-- ----------------------------------------------------------------------------
+SELECT 
     t.TransactionID,
-    CONCAT(c.FirstName, ' ', c.LastName) AS CustomerName,
+    t.ReferenceNumber,
+    t.TransactionDate,
     a.AccountNumber,
     t.TransactionType,
     t.Amount,
-    t.TransactionDate,
-    t.ReferenceNumber,
-    t.TransactionStatus
-FROM CUSTOMER c
-JOIN ACCOUNT_HOLDER ah ON ah.CustomerID = c.CustomerID
-JOIN ACCOUNT a ON a.AccountID = ah.AccountID
-JOIN BANK_TRANSACTION t ON t.AccountID = a.AccountID
-WHERE c.CustomerID = 1
+    t.Description
+FROM BANK_TRANSACTION t
+JOIN ACCOUNT a ON t.AccountID = a.AccountID
+JOIN ACCOUNT_HOLDER ah ON a.AccountID = ah.AccountID
+WHERE ah.CustomerID = 1
 ORDER BY t.TransactionDate DESC;
 
--- 9. Find customers who do not have an account.
-SELECT
+-- ----------------------------------------------------------------------------
+-- PROBLEM 8: Find customers who have registered but do NOT own any bank accounts.
+-- Purpose: Inactive lead detection for onboarding and sales follow-up.
+-- DBMS Concepts: LEFT JOIN with NULL check, NOT EXISTS alternative.
+-- Expected Columns: CustomerID, FullName, Email, Mobile, RegistrationDate
+-- ----------------------------------------------------------------------------
+SELECT 
     c.CustomerID,
-    CONCAT(c.FirstName, ' ', c.LastName) AS CustomerName,
+    CONCAT(c.FirstName, ' ', c.LastName) AS FullName,
+    c.Email,
     c.Mobile,
-    c.Email
+    c.RegistrationDate
 FROM CUSTOMER c
-LEFT JOIN ACCOUNT_HOLDER ah ON ah.CustomerID = c.CustomerID
-WHERE ah.CustomerID IS NULL
-ORDER BY c.CustomerID;
+LEFT JOIN ACCOUNT_HOLDER ah ON c.CustomerID = ah.CustomerID
+WHERE ah.AccountID IS NULL;
 
--- 10. Display the number of employees in each branch.
-SELECT
-    b.BranchID,
+-- ----------------------------------------------------------------------------
+-- PROBLEM 9: Display the number of employees and total payroll expenditure per branch.
+-- Purpose: Branch administrative cost and staffing evaluation.
+-- DBMS Concepts: Aggregation, GROUP BY, LEFT JOIN.
+-- Expected Columns: BranchName, City, EmployeeCount, TotalPayrollCost, AverageSalary
+-- ----------------------------------------------------------------------------
+SELECT 
     b.BranchName,
-    COUNT(e.EmployeeID) AS EmployeeCount
+    b.City,
+    COUNT(e.EmployeeID) AS EmployeeCount,
+    COALESCE(SUM(e.Salary), 0.00) AS TotalPayrollCost,
+    COALESCE(ROUND(AVG(e.Salary), 2), 0.00) AS AverageSalary
 FROM BRANCH b
-LEFT JOIN EMPLOYEE e ON e.BranchID = b.BranchID
-GROUP BY b.BranchID, b.BranchName
-ORDER BY EmployeeCount DESC, b.BranchName;
+LEFT JOIN EMPLOYEE e ON b.BranchID = e.BranchID
+GROUP BY b.BranchID, b.BranchName, b.City
+ORDER BY TotalPayrollCost DESC;
 
--- 11. Find the account with the highest balance.
-SELECT
+-- ----------------------------------------------------------------------------
+-- PROBLEM 10: Find the account with the highest balance in each branch.
+-- Purpose: Identify top branch accounts for VIP client allocation.
+-- DBMS Concepts: Correlated Subquery / Window Function emulation.
+-- Expected Columns: BranchName, AccountNumber, AccountType, Balance
+-- ----------------------------------------------------------------------------
+SELECT 
+    b.BranchName,
     a.AccountNumber,
     a.AccountType,
-    a.Balance,
-    b.BranchName,
-    (SELECT GROUP_CONCAT(CONCAT(c.FirstName, ' ', c.LastName) SEPARATOR ', ')
-       FROM ACCOUNT_HOLDER ah
-       JOIN CUSTOMER c ON c.CustomerID = ah.CustomerID
-      WHERE ah.AccountID = a.AccountID) AS AccountHolders
+    a.Balance
 FROM ACCOUNT a
-JOIN BRANCH b ON b.BranchID = a.BranchID
-ORDER BY a.Balance DESC
-LIMIT 1;
+JOIN BRANCH b ON a.BranchID = b.BranchID
+WHERE a.Balance = (
+    SELECT MAX(sub_a.Balance)
+    FROM ACCOUNT sub_a
+    WHERE sub_a.BranchID = a.BranchID AND sub_a.Status = 'Active'
+)
+ORDER BY a.Balance DESC;
 
--- 12. Display customers who have loans.
-SELECT DISTINCT
-    c.CustomerID,
+-- ----------------------------------------------------------------------------
+-- PROBLEM 11: Display customers who currently hold an active loan.
+-- Purpose: Credit monitoring and customer debt exposure analysis.
+-- DBMS Concepts: Multi-table JOIN with status filtering.
+-- Expected Columns: CustomerName, Mobile, LoanType, LoanAmount, InterestRate, TenureMonths, BranchName
+-- ----------------------------------------------------------------------------
+SELECT 
     CONCAT(c.FirstName, ' ', c.LastName) AS CustomerName,
-    l.LoanID,
+    c.Mobile,
     l.LoanType,
     l.LoanAmount,
-    l.LoanStatus
-FROM CUSTOMER c
-JOIN LOAN l ON l.CustomerID = c.CustomerID
-ORDER BY c.CustomerID, l.LoanID;
+    l.InterestRate,
+    l.TenureMonths,
+    b.BranchName
+FROM LOAN l
+JOIN CUSTOMER c ON l.CustomerID = c.CustomerID
+JOIN BRANCH b ON l.BranchID = b.BranchID
+WHERE l.LoanStatus = 'Active'
+ORDER BY l.LoanAmount DESC;
 
--- 13. Calculate total loan amounts by loan type for approved or closed loans.
-SELECT
+-- ----------------------------------------------------------------------------
+-- PROBLEM 12: Calculate total loan amounts and active count grouped by loan category.
+-- Purpose: Portfolio risk distribution across asset classes (Home, Education, Vehicle, Personal).
+-- DBMS Concepts: GROUP BY, Aggregate functions (COUNT, SUM, AVG).
+-- Expected Columns: LoanType, TotalLoansCount, TotalSanctionedAmount, AverageInterestRate
+-- ----------------------------------------------------------------------------
+SELECT 
     LoanType,
-    COUNT(*) AS LoanCount,
-    SUM(LoanAmount) AS TotalLoanAmount,
+    COUNT(LoanID) AS TotalLoansCount,
+    SUM(LoanAmount) AS TotalSanctionedAmount,
     ROUND(AVG(InterestRate), 2) AS AverageInterestRate
 FROM LOAN
-WHERE LoanStatus IN ('Approved', 'Closed')
 GROUP BY LoanType
-ORDER BY TotalLoanAmount DESC;
+ORDER BY TotalSanctionedAmount DESC;
 
--- 14. Display loan-payment history.
-SELECT
-    lp.PaymentID,
-    CONCAT(c.FirstName, ' ', c.LastName) AS CustomerName,
+-- ----------------------------------------------------------------------------
+-- PROBLEM 13: Display loan repayment progress: Sanctioned Amount vs Total Paid vs Outstanding.
+-- Purpose: Credit recovery tracking and non-performing asset risk mitigation.
+-- DBMS Concepts: Aggregation over child table with LEFT JOIN, arithmetic in SELECT.
+-- Expected Columns: LoanID, BorrowerName, LoanType, SanctionedAmount, TotalRepaid, OutstandingBalance
+-- ----------------------------------------------------------------------------
+SELECT 
     l.LoanID,
+    CONCAT(c.FirstName, ' ', c.LastName) AS BorrowerName,
     l.LoanType,
-    lp.PaymentDate,
-    lp.Amount,
-    lp.PaymentMode,
-    lp.ReferenceNumber
-FROM LOAN_PAYMENT lp
-JOIN LOAN l ON l.LoanID = lp.LoanID
-JOIN CUSTOMER c ON c.CustomerID = l.CustomerID
-ORDER BY lp.PaymentDate DESC;
+    l.LoanAmount AS SanctionedAmount,
+    COALESCE(SUM(lp.Amount), 0.00) AS TotalRepaid,
+    (l.LoanAmount - COALESCE(SUM(lp.Amount), 0.00)) AS OutstandingBalance
+FROM LOAN l
+JOIN CUSTOMER c ON l.CustomerID = c.CustomerID
+LEFT JOIN LOAN_PAYMENT lp ON l.LoanID = lp.LoanID
+GROUP BY l.LoanID, c.FirstName, c.LastName, l.LoanType, l.LoanAmount
+ORDER BY OutstandingBalance DESC;
 
--- 15. Identify inactive or closed accounts.
-SELECT
+-- ----------------------------------------------------------------------------
+-- PROBLEM 14: Identify inactive and zero-balance accounts requiring review or closure.
+-- Purpose: Bank operational compliance to purge dormant accounts.
+-- DBMS Concepts: Boolean compound filter with OR, IN, comparison operators.
+-- Expected Columns: AccountNumber, AccountType, Balance, Status, BranchName, OpeningDate
+-- ----------------------------------------------------------------------------
+SELECT 
     a.AccountNumber,
     a.AccountType,
     a.Balance,
     a.Status,
-    b.BranchName
-FROM ACCOUNT a
-JOIN BRANCH b ON b.BranchID = a.BranchID
-WHERE a.Status IN ('Inactive', 'Closed')
-ORDER BY a.Status, a.AccountNumber;
-
--- 16. Show successful transaction volume by branch.
-SELECT
     b.BranchName,
-    COUNT(t.TransactionID) AS TransactionCount,
-    COALESCE(SUM(t.Amount), 0) AS TransactionValue
-FROM BRANCH b
-JOIN ACCOUNT a ON a.BranchID = b.BranchID
-JOIN BANK_TRANSACTION t ON t.AccountID = a.AccountID
-WHERE t.TransactionStatus = 'SUCCESS'
-GROUP BY b.BranchID, b.BranchName
-ORDER BY TransactionValue DESC;
+    a.OpeningDate
+FROM ACCOUNT a
+JOIN BRANCH b ON a.BranchID = b.BranchID
+WHERE a.Status IN ('Inactive', 'Closed') OR a.Balance = 0.00
+ORDER BY a.Balance ASC, a.OpeningDate DESC;
 
--- 17. Find customers whose combined account balance is above the overall average account balance.
-SELECT
-    c.CustomerID,
-    CONCAT(c.FirstName, ' ', c.LastName) AS CustomerName,
-    SUM(a.Balance) AS CombinedBalance
-FROM CUSTOMER c
-JOIN ACCOUNT_HOLDER ah ON ah.CustomerID = c.CustomerID
-JOIN ACCOUNT a ON a.AccountID = ah.AccountID
-GROUP BY c.CustomerID, c.FirstName, c.LastName
-HAVING SUM(a.Balance) > (SELECT AVG(Balance) FROM ACCOUNT)
-ORDER BY CombinedBalance DESC;
-
--- 18. Show the monthly value of successful deposits and withdrawals.
-SELECT
-    DATE_FORMAT(TransactionDate, '%Y-%m') AS TransactionMonth,
-    SUM(CASE WHEN TransactionType = 'DEPOSIT' THEN Amount ELSE 0 END) AS DepositTotal,
-    SUM(CASE WHEN TransactionType = 'WITHDRAWAL' THEN Amount ELSE 0 END) AS WithdrawalTotal,
-    COUNT(*) AS TransactionCount
-FROM BANK_TRANSACTION
-WHERE TransactionStatus = 'SUCCESS'
-GROUP BY DATE_FORMAT(TransactionDate, '%Y-%m')
-ORDER BY TransactionMonth;
+-- ----------------------------------------------------------------------------
+-- PROBLEM 15: Find all fund transfers with matching sender and receiver transactions.
+-- Purpose: Inter-account transfer audit and reconciliation.
+-- DBMS Concepts: Self-join on BANK_TRANSACTION using ReferenceNumber.
+-- Expected Columns: ReferenceNumber, TransferDate, SenderAccount, ReceiverAccount, TransferredAmount
+-- ----------------------------------------------------------------------------
+SELECT 
+    t_out.ReferenceNumber,
+    t_out.TransactionDate AS TransferDate,
+    acc_from.AccountNumber AS SenderAccount,
+    acc_to.AccountNumber AS ReceiverAccount,
+    t_out.Amount AS TransferredAmount
+FROM BANK_TRANSACTION t_out
+JOIN BANK_TRANSACTION t_in ON t_out.ReferenceNumber = t_in.ReferenceNumber
+JOIN ACCOUNT acc_from ON t_out.AccountID = acc_from.AccountID
+JOIN ACCOUNT acc_to ON t_in.AccountID = acc_to.AccountID
+WHERE t_out.TransactionType = 'TRANSFER_OUT' 
+  AND t_in.TransactionType = 'TRANSFER_IN'
+ORDER BY t_out.TransactionDate DESC;

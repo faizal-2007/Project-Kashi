@@ -1,27 +1,46 @@
-# Entity-Relationship Diagram
+# Entity-Relationship (ER) Diagram — Project Kashi
 
-The diagram below is the logical ER model of the implemented `project_kashi` database. It matches `sql/schema.sql`.
+This document contains the visual and logical Entity-Relationship architecture of **Project Kashi — Banking Management System**.
+
+---
+
+## 1. Visual Mermaid ER Diagram
+
+The following Mermaid diagram renders natively in GitHub Markdown viewers and VS Code:
 
 ```mermaid
 erDiagram
-    BRANCH ||--o{ EMPLOYEE : employs
-    BRANCH ||--o{ ACCOUNT : hosts
-    BRANCH ||--o{ LOAN : processes
-    CUSTOMER ||--o{ ACCOUNT_HOLDER : holds
-    ACCOUNT ||--o{ ACCOUNT_HOLDER : has
-    CUSTOMER ||--o{ LOAN : applies_for
-    ACCOUNT ||--o{ BANK_TRANSACTION : records
-    LOAN ||--o{ LOAN_PAYMENT : receives
+    BRANCH ||--o{ EMPLOYEE : "employs"
+    BRANCH ||--o{ ACCOUNT : "maintains"
+    BRANCH ||--o{ LOAN : "disburses"
+    CUSTOMER ||--o{ ACCOUNT_HOLDER : "holds"
+    ACCOUNT ||--o{ ACCOUNT_HOLDER : "has_holders"
+    CUSTOMER ||--o{ LOAN : "borrows"
+    ACCOUNT ||--o{ BANK_TRANSACTION : "records"
+    LOAN ||--o{ LOAN_PAYMENT : "repaid_by"
 
     BRANCH {
         int BranchID PK
         varchar BranchName
-        char IFSCCode UK
+        varchar IFSCCode UK
         varchar Address
         varchar City
         varchar State
         varchar ContactNumber
+        datetime CreatedAt
     }
+
+    EMPLOYEE {
+        int EmployeeID PK
+        varchar EmployeeName
+        varchar Mobile
+        varchar Email UK
+        varchar Designation
+        decimal Salary
+        date JoiningDate
+        int BranchID FK
+    }
+
     CUSTOMER {
         int CustomerID PK
         varchar FirstName
@@ -34,16 +53,7 @@ erDiagram
         varchar City
         datetime RegistrationDate
     }
-    EMPLOYEE {
-        int EmployeeID PK
-        varchar EmployeeName
-        varchar Mobile UK
-        varchar Email UK
-        varchar Designation
-        decimal Salary
-        date JoiningDate
-        int BranchID FK
-    }
+
     ACCOUNT {
         int AccountID PK
         varchar AccountNumber UK
@@ -53,23 +63,25 @@ erDiagram
         enum Status
         int BranchID FK
     }
+
     ACCOUNT_HOLDER {
-        int CustomerID PK,FK
-        int AccountID PK,FK
+        int CustomerID PK_FK
+        int AccountID PK_FK
         datetime HolderSince
         enum HolderType
     }
+
     BANK_TRANSACTION {
-        bigint TransactionID PK
+        int TransactionID PK
         int AccountID FK
         enum TransactionType
         decimal Amount
         datetime TransactionDate
         varchar Description
-        varchar ReferenceNumber UK
-        varchar TransferGroupReference
+        varchar ReferenceNumber
         enum TransactionStatus
     }
+
     LOAN {
         int LoanID PK
         int CustomerID FK
@@ -81,6 +93,7 @@ erDiagram
         int TenureMonths
         enum LoanStatus
     }
+
     LOAN_PAYMENT {
         int PaymentID PK
         int LoanID FK
@@ -91,33 +104,25 @@ erDiagram
     }
 ```
 
-## ER model versus relational schema
+---
 
-An **ER model** describes entities, attributes, and business relationships at a conceptual level. It does not include physical storage details. The **relational schema** is the physical implementation: tables, column data types, primary keys, foreign keys, unique constraints, checks, defaults, and indexes.
+## 2. Distinction Between ER Diagram and Relational Schema
 
-- The ER model shows CUSTOMER and ACCOUNT as related.
-- The relational schema implements that many-to-many relationship as the `ACCOUNT_HOLDER` junction table with the composite primary key `(CustomerID, AccountID)`.
+| Dimension | Conceptual ER Diagram | Relational Schema |
+| :--- | :--- | :--- |
+| **Abstraction Level** | High-level conceptual model focusing on business entities and associations. | Logical and physical implementation model ready for RDBMS storage. |
+| **Representation of M:N Relationships** | Drawn directly as a diamond relationship connecting two entities (e.g., `CUSTOMER` holds `ACCOUNT`). | Decomposed into an associative/bridge table (`ACCOUNT_HOLDER`) with foreign keys. |
+| **Attributes** | Outlined as ellipses or logical property lists without implementation specifics. | Defined with strict MySQL data types (`INT`, `VARCHAR(50)`, `DECIMAL(15,2)`, `DATETIME`). |
+| **Integrity Rules** | Outlined as business constraints. | Enforced via `PRIMARY KEY`, `FOREIGN KEY`, `CHECK`, `UNIQUE`, `NOT NULL`, and cascading actions (`ON UPDATE CASCADE`). |
 
-## Why ACCOUNT_HOLDER is required
+---
 
-One customer can own several accounts, and one account can be shared by several customers (for example, a primary holder and a joint holder). A many-to-many relationship cannot be stored in either CUSTOMER or ACCOUNT without repeating data or limiting the relationship. `ACCOUNT_HOLDER` resolves it:
+## 3. Why `ACCOUNT_HOLDER` is Required to Represent Many-to-Many
 
-- Each row links exactly one customer to exactly one account.
-- The composite primary key prevents the same customer from being linked twice to the same account.
-- `HolderType` records whether the holder is `Primary` or `Joint`.
-- A trigger enforces at most one `Primary` holder per account.
+In modern retail banking:
+1. **Multiple accounts per customer**: A customer can hold both a Savings Account and a Current Account.
+2. **Multiple customers per account**: Spouses or business partners can operate a single **Joint Account**.
 
-## Entities at a glance
+If we placed `CustomerID` directly inside `ACCOUNT`, an account could only ever belong to **one** customer (disallowing Joint accounts). Conversely, placing `AccountID` inside `CUSTOMER` would prevent a customer from holding multiple accounts unless we violated First Normal Form (1NF) with a multi-valued repeating column.
 
-| Entity | Logical table | Purpose |
-|---|---|---|
-| BRANCH | `BRANCH` | Bank branch master data and IFSC. |
-| CUSTOMER | `CUSTOMER` | Person who uses banking services. |
-| EMPLOYEE | `EMPLOYEE` | Staff member assigned to a branch. |
-| ACCOUNT | `ACCOUNT` | Bank account with type, balance, and status. |
-| ACCOUNT_HOLDER | `ACCOUNT_HOLDER` | Junction between customers and accounts. |
-| TRANSACTION | `BANK_TRANSACTION` | Immutable financial activity record. |
-| LOAN | `LOAN` | Loan application and lifecycle status. |
-| LOAN_PAYMENT | `LOAN_PAYMENT` | Payment made against a loan. |
-
-`BANK_TRANSACTION` is used as the physical table name because `TRANSACTION` is a reserved SQL keyword. The logical entity name remains TRANSACTION.
+Therefore, the associative entity **`ACCOUNT_HOLDER`** bridges `CUSTOMER` and `ACCOUNT` using a composite primary key `(CustomerID, AccountID)` and supports an attribute `HolderType` (`Primary` vs `Joint`).

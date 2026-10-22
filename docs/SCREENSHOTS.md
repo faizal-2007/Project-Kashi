@@ -1,61 +1,37 @@
-# Screenshot Capture Guide
+# Screenshot Capture & Documentation Guide — Project Kashi
 
-No screenshots were captured in this environment. The application was tested with Flask's test client and an isolated MySQL server, not with a screenshot-capable browser. Do not submit invented images. Capture real screenshots from your own running application.
+This guide documents the 13 essential screenshots required for your academic project evaluation, lab submission, and project report.
 
-## Preparation
+---
 
-1. Ensure `.env` points to the real local `project_kashi` database.
-2. Load `sql/sample_data.sql`.
-3. Start the app with `python app.py`.
-4. Open <http://127.0.0.1:5000>.
-5. Use a 1440x900 browser window for consistent framing.
-6. Hide personal data and passwords. The sample data uses example.com addresses and fictional names.
+## Required Screenshot Checklist
 
-## Required screenshots
+| # | Screenshot Filename | View / Page | Key Visual Elements to Include |
+| :---: | :--- | :--- | :--- |
+| **01** | `01_dashboard.png` | Executive Dashboard (`/`) | Total Customers card, Active Accounts, Total Deposits (₹), and Recent Transactions table. |
+| **02** | `02_customer_registration.png` | Customer Form (`/customers/register`) | Input fields (Name, DOB, Mobile, Email, Address, City) and validation elements. |
+| **03** | `03_customer_directory.png` | Customer List (`/customers`) | Customer records table with search input and "+ Register Customer" action button. |
+| **04** | `04_customer_portfolio.png` | Customer Detail (`/customers/1`) | Demographics card, linked bank accounts with holder roles, and active loans. |
+| **05** | `05_account_opening.png` | Open Account Form (`/accounts/open`) | Customer dropdown, branch dropdown, account type, and initial deposit amount. |
+| **06** | `06_accounts_register.png` | Accounts List (`/accounts`) | Multi-account table with status pills (Active, Inactive) and multi-factor filter bar. |
+| **07** | `07_deposit_operation.png` | Deposit Screen (`/deposit`) | Target account selector, deposit amount, description, and success flash message. |
+| **08** | `08_withdrawal_operation.png` | Withdrawal Screen (`/withdrawal`) | Debit account selection, amount validation, and post-withdrawal balance alert. |
+| **09** | `09_transfer_operation.png` | EFT Transfer (`/transfer`) | Source and destination selectors, transfer amount, and confirmation dialog prompt. |
+| **10** | `10_transactions_ledger.png` | Transactions Ledger (`/transactions`) | Comprehensive ledger showing `DEPOSIT`, `WITHDRAWAL`, `TRANSFER_IN`, and `TRANSFER_OUT` rows. |
+| **11** | `11_sql_business_analytics.png` | Business Analytics (`/business-queries`) | Query tab pills, syntax-highlighted SQL box, and live executed MySQL output table. |
+| **12** | `12_loan_management.png` | Loan Portfolio (`/loans`) | Loan facilities table displaying sanctioned principal, repayments, and outstanding debt. |
+| **13** | `13_mysql_cli_tables.png` | MySQL CLI or Workbench | Output of `SHOW TABLES;` and `DESCRIBE ACCOUNT;` in MySQL Command Line Client. |
 
-Save files in `screenshots/` using these recommended names.
+---
 
-| # | Filename | Page / evidence | What to show |
-|---|---|---|---|
-| 1 | `01-dashboard.png` | `/` | Six live statistics cards, recent transactions, branch overview. |
-| 2 | `02-customer-registration.png` | `/customers/new` | Completed or blank customer form. |
-| 3 | `03-customer-list.png` | `/customers` | Search box, customer rows, account/loan counts. |
-| 4 | `04-account-opening.png` | `/accounts/open` | Customer, type, branch, initial deposit fields. |
-| 5 | `05-account-detail.png` | `/accounts/1` | Balance, status, holders, transaction history. |
-| 6 | `06-deposit-result.png` | `/deposit` plus detail | Success flash and updated balance. |
-| 7 | `07-withdrawal-result.png` | `/withdraw` plus detail | Success flash or insufficient-balance rejection. |
-| 8 | `08-transfer-result.png` | `/transfer` plus `/transactions` | Both transfer entries and common group reference. |
-| 9 | `09-transaction-history.png` | `/transactions` | Filters and transaction table. |
-| 10 | `10-mysql-tables.png` | MySQL client | `SHOW TABLES;` and `DESCRIBE ACCOUNT;`. |
-| 11 | `11-er-diagram.png` | GitHub-rendered `docs/ER_DIAGRAM.md` | Mermaid ER diagram. |
-| 12 | `12-sql-query-output.png` | MySQL client | Output of a business query from `sql/business_queries.sql`. |
-| 13 | `13-trigger-example.png` | MySQL client | `SHOW TRIGGERS;` or an error caused by the immutability trigger. |
-| 14 | `14-loan-workflow.png` | `/loans/1` | Loan details, payments, outstanding, status. |
-| 15 | `15-branch-employee.png` | `/branches` and `/employees` | Branch summary and staff records. |
+## Instructions for Capturing Screenshots on Windows
 
-## Suggested MySQL screenshots
-
-```cmd
-mysql -u root -p -e "USE project_kashi; SHOW TABLES;"
-mysql -u root -p -e "USE project_kashi; DESCRIBE ACCOUNT;"
-mysql -u root -p -e "USE project_kashi; SHOW TRIGGERS;"
-mysql -u root -p -e "USE project_kashi; SELECT * FROM vw_branch_summary;"
-```
-
-Demonstrate a trigger rejection without damaging the sample data:
-
-```sql
-UPDATE BANK_TRANSACTION SET Amount = 1 WHERE TransactionID = 1;
--- Expected: ERROR 1644 transaction history is immutable
-```
-
-## Include in the report
-
-Insert the images into `docs/PROJECT_REPORT.md` or your final report with captions such as:
-
-```markdown
-![Dashboard](screenshots/01-dashboard.png)
-*Figure 1: Live dashboard calculated from MySQL.*
-```
-
-Only add images that actually exist. The repository currently contains this instruction file and a placeholder README, not screenshot images.
+1. Ensure MySQL Server is running and sample data is loaded.
+2. Activate your virtual environment and start the application:
+   ```cmd
+   .venv\Scripts\activate
+   python app.py
+   ```
+3. Open your browser to `http://127.0.0.1:5000/`.
+4. Use Windows Snipping Tool (`Win + Shift + S`) or browser full-page screenshot (`Ctrl + Shift + I` $\rightarrow$ `Ctrl + Shift + P` $\rightarrow$ "Capture full size screenshot").
+5. Save captured PNG files directly into the `screenshots/` directory following the naming convention above.

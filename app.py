@@ -1,922 +1,1136 @@
 import re
-import secrets
-import uuid
-from decimal import Decimal, InvalidOperation
-from datetime import datetime, date
-
-from flask import (
-    Flask,
-    render_template,
-    request,
-    redirect,
-    url_for,
-    flash,
-    current_app,
-)
-from flask_wtf.csrf import CSRFError, CSRFProtect
-
+import datetime
+from flask import Flask, render_template, request, redirect, url_for, flash
+import mysql.connector
 from config import Config
 from db import (
-    check_connection,
-    query_all,
-    query_one,
-    execute,
-    transaction,
+    get_db_connection, test_connection, execute_query,
+    open_account_transaction, deposit_transaction, withdrawal_transaction,
+    transfer_transaction, record_loan_payment_transaction
 )
-
 
 app = Flask(__name__)
 app.config.from_object(Config)
-csrf = CSRFProtect(app)
 
+# ----------------------------------------------------------------------------
+# CONTEXT PROCESSOR & TEMPLATE FILTERS
+# ----------------------------------------------------------------------------
+@app.context_processor
+def inject_db_status():
+    """Provides database connection status to all templates for the header badge."""
+    is_connected, msg = test_connection()
+    return {"db_connected": is_connected, "db_message": msg}
 
-@app.template_filter('currency')
+@app.template_filter("currency")
 def currency_filter(value):
     try:
-        amount = Decimal(str(value if value is not None else 0)).quantize(Decimal("0.01"))
-        return f"₹{amount:,.2f}"
-    except Exception:
-        return f"₹{value}"
+        val = float(value)
+        return f"₹{val:,.2f}"
+    except (ValueError, TypeError):
+        return "₹0.00"
 
-
-@app.template_filter('datetime')
-def datetime_filter(value):
-    if value is None:
-        return "-"
+@app.template_filter("dateformat")
+def dateformat_filter(value, fmt="%d %b %Y"):
+    if not value:
+        return ""
     if isinstance(value, str):
-        return value
-    try:
-        return value.strftime("%Y-%m-%d %H:%M")
-    except Exception:
-        return str(value)
+        try:
+            value = datetime.datetime.fromisoformat(value)
+        except ValueError:
+            return value
+    if isinstance(value, (datetime.datetime, datetime.date)):
+        return value.strftime(fmt)
+    return str(value)
 
-
-@app.context_processor
-def inject_now():
-    return {"current_year": datetime.now().year}
-
-
-EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-MOBILE_PATTERN = re.compile(r"^[0-9]{10,15}$")
-IFSC_PATTERN = re.compile(r"^[A-Z]{4}0[0-9]{6}$")
-MONEY_LIMIT = Decimal("9999999999999.99")
-
-
-def parse_money(raw_value, label="Amount", allow_zero=False):
-    if raw_value is None or str(raw_value).strip() == "":
-        raise ValueError(f"{label} is required.")
-    try:
-        value = Decimal(str(raw_value).strip())
-    except (InvalidOperation, ValueError):
-        raise ValueError(f"{label} must be a valid number.")
-    if not value.is_finite():
-        raise ValueError(f"{label} must be a finite number.")
-    if value < 0 or (value == 0 and not allow_zero):
-        raise ValueError(f"{label} must be greater than zero.")
-    if value.as_tuple().exponent < -2:
-        raise ValueError(f"{label} can have at most two decimal places.")
-    if value > MONEY_LIMIT:
-        raise ValueError(f"{label} is too large.")
-    return value.quantize(Decimal("0.01"))
-
-
-def parse_date_value(raw_value, label="Date", allow_future=False):
-    if raw_value is None or str(raw_value).strip() == "":
-        raise ValueError(f"{label} is required.")
-    try:
-        value = date.fromisoformat(str(raw_value).strip())
-    except ValueError:
-        raise ValueError(f"{label} must use the YYYY-MM-DD format.")
-    if value < date(1900, 1, 1):
-        raise ValueError(f"{label} is not valid.")
-    if not allow_future and value > date.today():
-        raise ValueError(f"{label} cannot be in the future.")
-    return value
-
-
-def parse_record_id(raw_value, label="Record"):
-    if raw_value is None or not str(raw_value).strip().isdigit():
-        raise ValueError(f"Please select a valid {label.lower()}.")
-    return int(str(raw_value).strip())
-
-
+# ----------------------------------------------------------------------------
+# 1. DASHBOARD ROUTE
+# ----------------------------------------------------------------------------
 @app.route("/")
 def index():
+    is_connected, msg = test_connection()
+    if not is_connected:
+        return render_template(
+            "index.html",
+            db_error=msg,
+            stats={"customers": 0, "accounts": 0, "active_accounts": 0, "branches": 0, "total_deposits": 0, "transactions": 0},
+            recent_transactions=[]
+        )
+
     try:
-        total_customers = query_one("SELECT COUNT(*) AS cnt FROM CUSTOMER")["cnt"]
-        total_accounts = query_one("SELECT COUNT(*) AS cnt FROM ACCOUNT")["cnt"]
-        total_branches = query_one("SELECT COUNT(*) AS cnt FROM BRANCH")["cnt"]
-        active_accounts = query_one("SELECT COUNT(*) AS cnt FROM ACCOUNT WHERE Status = 'Active'")["cnt"]
-        total_transactions = query_one("SELECT COUNT(*) AS cnt FROM BANK_TRANSACTION")["cnt"]
-        total_loans = query_one("SELECT COUNT(*) AS cnt FROM LOAN")["cnt"]
-        total_balance = query_one("SELECT COALESCE(SUM(Balance), 0) AS total FROM ACCOUNT WHERE Status = 'Active'")["total"]
-        recent_transactions = query_all(
-            """
-            SELECT t.TransactionID, t.AccountID, a.AccountNumber, t.TransactionType, t.Amount, t.TransactionDate, t.ReferenceNumber, t.TransactionStatus
+        cust_count = execute_query("SELECT COUNT(*) AS total FROM CUSTOMER", fetchone=True)["total"]
+        acc_stats = execute_query("""
+            SELECT 
+                COUNT(*) AS total_accounts,
+                COALESCE(SUM(CASE WHEN Status = 'Active' THEN 1 ELSE 0 END), 0) AS active_accounts,
+                COALESCE(SUM(Balance), 0.00) AS total_deposits
+            FROM ACCOUNT
+        """, fetchone=True)
+        branch_count = execute_query("SELECT COUNT(*) AS total FROM BRANCH", fetchone=True)["total"]
+        tx_count = execute_query("SELECT COUNT(*) AS total FROM BANK_TRANSACTION", fetchone=True)["total"]
+
+        recent_tx = execute_query("""
+            SELECT 
+                t.TransactionID,
+                t.ReferenceNumber,
+                t.TransactionType,
+                t.Amount,
+                t.TransactionDate,
+                t.TransactionStatus,
+                a.AccountNumber,
+                c.FirstName,
+                c.LastName
             FROM BANK_TRANSACTION t
-            JOIN ACCOUNT a ON a.AccountID = t.AccountID
+            JOIN ACCOUNT a ON t.AccountID = a.AccountID
+            LEFT JOIN ACCOUNT_HOLDER ah ON a.AccountID = ah.AccountID AND ah.HolderType = 'Primary'
+            LEFT JOIN CUSTOMER c ON ah.CustomerID = c.CustomerID
             ORDER BY t.TransactionDate DESC, t.TransactionID DESC
-            LIMIT 10
-            """
-        )
-        branch_summary = query_all("SELECT * FROM vw_branch_summary ORDER BY BranchID")
-    except Exception:
-        current_app.logger.exception("Dashboard database query failed")
-        return render_template("error.html", error_message="The dashboard could not load data from MySQL. Check the database connection."), 500
+            LIMIT 8
+        """, fetchall=True)
 
-    return render_template(
-        "index.html",
-        total_customers=total_customers,
-        total_accounts=total_accounts,
-        total_branches=total_branches,
-        active_accounts=active_accounts,
-        total_transactions=total_transactions,
-        total_loans=total_loans,
-        total_balance=total_balance,
-        recent_transactions=recent_transactions,
-        branch_summary=branch_summary,
-    )
+        stats = {
+            "customers": cust_count,
+            "accounts": acc_stats["total_accounts"],
+            "active_accounts": acc_stats["active_accounts"],
+            "branches": branch_count,
+            "total_deposits": acc_stats["total_deposits"],
+            "transactions": tx_count
+        }
 
+        return render_template("index.html", stats=stats, recent_transactions=recent_tx, db_error=None)
+    except mysql.connector.Error as e:
+        return render_template("index.html", db_error=f"Database query error: {e.msg}", stats={}, recent_transactions=[])
 
-@app.route("/health")
-def health():
-    try:
-        check_connection()
-        return {"status": "ok", "database": app.config["DB_NAME"]}
-    except Exception:
-        current_app.logger.exception("Database health check failed")
-        return {"status": "error", "message": "Database connection unavailable."}, 500
-
-
-# Customer management
+# ----------------------------------------------------------------------------
+# 2. CUSTOMER MANAGEMENT ROUTES
+# ----------------------------------------------------------------------------
 @app.route("/customers")
-def customers():
-    search = request.args.get("q", "").strip()
-    if search:
-        rows = query_all(
-            """
-            SELECT c.*, 
-                   (SELECT COUNT(*) FROM ACCOUNT_HOLDER ah WHERE ah.CustomerID = c.CustomerID) AS account_count,
-                   (SELECT COUNT(*) FROM LOAN l WHERE l.CustomerID = c.CustomerID) AS loan_count
-            FROM CUSTOMER c
-            WHERE c.FirstName LIKE %s OR c.LastName LIKE %s OR c.Mobile LIKE %s OR c.Email LIKE %s
-            ORDER BY c.CustomerID
-            """,
-            (f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"),
-        )
-    else:
-        rows = query_all(
-            """
-            SELECT c.*, 
-                   (SELECT COUNT(*) FROM ACCOUNT_HOLDER ah WHERE ah.CustomerID = c.CustomerID) AS account_count,
-                   (SELECT COUNT(*) FROM LOAN l WHERE l.CustomerID = c.CustomerID) AS loan_count
-            FROM CUSTOMER c
-            ORDER BY c.CustomerID
-            """
-        )
-    return render_template("customers.html", customers=rows, search=search)
+def customer_list():
+    search = request.args.get("search", "").strip()
+    is_connected, _ = test_connection()
+    if not is_connected:
+        flash("MySQL database is not connected. Displaying offline mode.", "warning")
+        return render_template("customers.html", customers=[], search=search)
 
+    try:
+        query = """
+            SELECT 
+                c.CustomerID,
+                c.FirstName,
+                c.LastName,
+                c.Email,
+                c.Mobile,
+                c.City,
+                c.RegistrationDate,
+                COUNT(ah.AccountID) AS AccountCount
+            FROM CUSTOMER c
+            LEFT JOIN ACCOUNT_HOLDER ah ON c.CustomerID = ah.CustomerID
+        """
+        params = []
+        if search:
+            query += " WHERE c.FirstName LIKE %s OR c.LastName LIKE %s OR c.Email LIKE %s OR c.Mobile LIKE %s OR c.City LIKE %s"
+            wildcard = f"%{search}%"
+            params.extend([wildcard, wildcard, wildcard, wildcard, wildcard])
 
-@app.route("/customers/new", methods=["GET", "POST"])
-def customer_new():
+        query += " GROUP BY c.CustomerID ORDER BY c.CustomerID DESC"
+        customers = execute_query(query, params, fetchall=True)
+        return render_template("customers.html", customers=customers, search=search)
+    except mysql.connector.Error as e:
+        flash(f"Database error: {e.msg}", "danger")
+        return render_template("customers.html", customers=[], search=search)
+
+@app.route("/customers/register", methods=["GET", "POST"])
+def customer_register():
     if request.method == "POST":
-        first_name = request.form.get("FirstName", "").strip()
-        last_name = request.form.get("LastName", "").strip()
-        dob = request.form.get("DateOfBirth", "").strip()
-        gender = request.form.get("Gender", "").strip()
-        mobile = request.form.get("Mobile", "").strip()
-        email = request.form.get("Email", "").strip().lower()
-        address = request.form.get("Address", "").strip()
-        city = request.form.get("City", "").strip()
+        first_name = request.form.get("first_name", "").strip()
+        last_name = request.form.get("last_name", "").strip()
+        dob = request.form.get("dob", "").strip()
+        gender = request.form.get("gender", "").strip()
+        mobile = request.form.get("mobile", "").strip()
+        email = request.form.get("email", "").strip()
+        address = request.form.get("address", "").strip()
+        city = request.form.get("city", "").strip()
+
+        errors = []
+        if not first_name or not last_name:
+            errors.append("First name and Last name are mandatory.")
+        if not dob:
+            errors.append("Date of Birth is required.")
+        if gender not in ["Male", "Female", "Other"]:
+            errors.append("Please select a valid Gender.")
+        if not re.match(r"^[0-9]{10}$", mobile):
+            errors.append("Mobile number must be exactly 10 digits.")
+        if not re.match(r"^[^@]+@[^@]+\.[^@]+$", email):
+            errors.append("Please provide a valid email address.")
+        if not address or not city:
+            errors.append("Address and City are required.")
+
+        if errors:
+            for err in errors:
+                flash(err, "danger")
+            return render_template("customer_form.html", form_data=request.form)
+
+        is_connected, _ = test_connection()
+        if not is_connected:
+            flash("Cannot register customer: MySQL database is currently disconnected.", "danger")
+            return render_template("customer_form.html", form_data=request.form)
 
         try:
-            if not all([first_name, last_name, dob, gender, mobile, email, address, city]):
-                raise ValueError("All fields are required.")
-            if len(first_name) > 60 or len(last_name) > 60:
-                raise ValueError("First name and last name must be 60 characters or fewer.")
-            if gender not in ("Male", "Female", "Other"):
-                raise ValueError("Select a valid gender.")
-            if not MOBILE_PATTERN.fullmatch(mobile):
-                raise ValueError("Mobile must contain 10 to 15 digits.")
-            if not EMAIL_PATTERN.fullmatch(email) or len(email) > 120:
-                raise ValueError("Enter a valid email address.")
-            parse_date_value(dob, "Date of birth")
-            if len(address) > 255 or len(city) > 80:
-                raise ValueError("Address or city is too long.")
-            execute(
-                """
+            existing = execute_query(
+                "SELECT CustomerID FROM CUSTOMER WHERE Email = %s OR Mobile = %s",
+                (email, mobile), fetchone=True
+            )
+            if existing:
+                flash("A customer with this email or mobile number is already registered.", "warning")
+                return render_template("customer_form.html", form_data=request.form)
+
+            sql = """
                 INSERT INTO CUSTOMER (FirstName, LastName, DateOfBirth, Gender, Mobile, Email, Address, City)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                (first_name, last_name, dob, gender, mobile, email, address, city),
-            )
-            flash("Customer registered successfully.", "success")
-            return redirect(url_for("customers"))
-        except ValueError as exc:
-            flash(str(exc), "danger")
-            return render_template("customer_form.html")
-        except Exception as exc:
-            if "uq_customer_mobile" in str(exc):
-                flash("Mobile number already exists.", "danger")
-            elif "uq_customer_email" in str(exc):
-                flash("Email address already exists.", "danger")
-            elif "CHECK" in str(exc).upper():
-                flash("Validation error: check the entered values.", "danger")
-            else:
-                current_app.logger.exception("Customer registration failed")
-                flash("Could not register customer. Ensure values are valid.", "danger")
-            return render_template("customer_form.html")
+            """
+            res = execute_query(sql, (first_name, last_name, dob, gender, mobile, email, address, city), commit=True)
+            cust_id = res["lastrowid"]
+            flash(f"Customer {first_name} {last_name} registered successfully with ID #{cust_id}!", "success")
+            return redirect(url_for("customer_detail", customer_id=cust_id))
+        except mysql.connector.Error as e:
+            flash(f"Database error during registration: {e.msg}", "danger")
+            return render_template("customer_form.html", form_data=request.form)
 
-    return render_template("customer_form.html")
-
+    return render_template("customer_form.html", form_data={})
 
 @app.route("/customers/<int:customer_id>")
 def customer_detail(customer_id):
-    customer = query_one("SELECT * FROM CUSTOMER WHERE CustomerID = %s", (customer_id,))
-    if not customer:
-        return render_template("404.html", message="Customer not found"), 404
-    accounts = query_all(
-        """
-        SELECT a.*, ah.HolderType, ah.HolderSince, b.BranchName
-        FROM ACCOUNT_HOLDER ah
-        JOIN ACCOUNT a ON a.AccountID = ah.AccountID
-        JOIN BRANCH b ON b.BranchID = a.BranchID
-        WHERE ah.CustomerID = %s
-        ORDER BY a.AccountID
-        """,
-        (customer_id,),
-    )
-    loans = query_all("SELECT * FROM LOAN WHERE CustomerID = %s ORDER BY LoanID", (customer_id,))
-    transactions = query_all(
-        """
-        SELECT t.*, a.AccountNumber
-        FROM BANK_TRANSACTION t
-        JOIN ACCOUNT a ON a.AccountID = t.AccountID
-        JOIN ACCOUNT_HOLDER ah ON ah.AccountID = a.AccountID
-        WHERE ah.CustomerID = %s
-        ORDER BY t.TransactionDate DESC, t.TransactionID DESC
-        LIMIT 50
-        """,
-        (customer_id,),
-    )
-    return render_template("customer_detail.html", customer=customer, accounts=accounts, loans=loans, transactions=transactions)
+    is_connected, _ = test_connection()
+    if not is_connected:
+        flash("MySQL database is not connected.", "warning")
+        return redirect(url_for("customer_list"))
 
+    try:
+        customer = execute_query("SELECT * FROM CUSTOMER WHERE CustomerID = %s", (customer_id,), fetchone=True)
+        if not customer:
+            flash("Customer not found.", "warning")
+            return redirect(url_for("customer_list"))
 
-# Account management
+        accounts = execute_query("""
+            SELECT 
+                a.AccountID,
+                a.AccountNumber,
+                a.AccountType,
+                a.Balance,
+                a.Status,
+                a.OpeningDate,
+                ah.HolderType,
+                b.BranchName,
+                b.IFSCCode
+            FROM ACCOUNT a
+            JOIN ACCOUNT_HOLDER ah ON a.AccountID = ah.AccountID
+            JOIN BRANCH b ON a.BranchID = b.BranchID
+            WHERE ah.CustomerID = %s
+        """, (customer_id,), fetchall=True)
+
+        loans = execute_query("""
+            SELECT l.*, b.BranchName
+            FROM LOAN l
+            JOIN BRANCH b ON l.BranchID = b.BranchID
+            WHERE l.CustomerID = %s
+        """, (customer_id,), fetchall=True)
+
+        return render_template("customer_detail.html", customer=customer, accounts=accounts, loans=loans)
+    except mysql.connector.Error as e:
+        flash(f"Database error: {e.msg}", "danger")
+        return redirect(url_for("customer_list"))
+
+# ----------------------------------------------------------------------------
+# 3. ACCOUNT MANAGEMENT ROUTES
+# ----------------------------------------------------------------------------
 @app.route("/accounts")
-def accounts():
-    search = request.args.get("q", "").strip()
-    if search:
-        rows = query_all(
-            """
-            SELECT a.*, b.BranchName, b.IFSCCode,
-                   (SELECT GROUP_CONCAT(CONCAT(c.FirstName, ' ', c.LastName) SEPARATOR ', ')
-                      FROM ACCOUNT_HOLDER ah JOIN CUSTOMER c ON c.CustomerID = ah.CustomerID
-                     WHERE ah.AccountID = a.AccountID) AS Holders
-            FROM ACCOUNT a
-            JOIN BRANCH b ON b.BranchID = a.BranchID
-            WHERE a.AccountNumber LIKE %s OR b.BranchName LIKE %s
-            ORDER BY a.AccountID
-            """,
-            (f"%{search}%", f"%{search}%"),
-        )
-    else:
-        rows = query_all(
-            """
-            SELECT a.*, b.BranchName, b.IFSCCode,
-                   (SELECT GROUP_CONCAT(CONCAT(c.FirstName, ' ', c.LastName) SEPARATOR ', ')
-                      FROM ACCOUNT_HOLDER ah JOIN CUSTOMER c ON c.CustomerID = ah.CustomerID
-                     WHERE ah.AccountID = a.AccountID) AS Holders
-            FROM ACCOUNT a
-            JOIN BRANCH b ON b.BranchID = a.BranchID
-            ORDER BY a.AccountID
-            """
-        )
-    return render_template("accounts.html", accounts=rows, search=search)
+def account_list():
+    search = request.args.get("search", "").strip()
+    status_filter = request.args.get("status", "").strip()
+    type_filter = request.args.get("type", "").strip()
 
+    is_connected, _ = test_connection()
+    if not is_connected:
+        flash("MySQL database is not connected. Displaying offline mode.", "warning")
+        return render_template("accounts.html", accounts=[], search=search, status_filter=status_filter, type_filter=type_filter)
+
+    try:
+        query = """
+            SELECT 
+                a.AccountID,
+                a.AccountNumber,
+                a.AccountType,
+                a.Balance,
+                a.Status,
+                a.OpeningDate,
+                b.BranchName,
+                b.IFSCCode,
+                GROUP_CONCAT(CONCAT(c.FirstName, ' ', c.LastName, ' (', ah.HolderType, ')') SEPARATOR ', ') AS Holders
+            FROM ACCOUNT a
+            JOIN BRANCH b ON a.BranchID = b.BranchID
+            LEFT JOIN ACCOUNT_HOLDER ah ON a.AccountID = ah.AccountID
+            LEFT JOIN CUSTOMER c ON ah.CustomerID = c.CustomerID
+            WHERE 1=1
+        """
+        params = []
+        if search:
+            query += " AND (a.AccountNumber LIKE %s OR c.FirstName LIKE %s OR c.LastName LIKE %s OR b.BranchName LIKE %s)"
+            wildcard = f"%{search}%"
+            params.extend([wildcard, wildcard, wildcard, wildcard])
+        if status_filter:
+            query += " AND a.Status = %s"
+            params.append(status_filter)
+        if type_filter:
+            query += " AND a.AccountType = %s"
+            params.append(type_filter)
+
+        query += " GROUP BY a.AccountID ORDER BY a.AccountID DESC"
+        accounts = execute_query(query, params, fetchall=True)
+        return render_template("accounts.html", accounts=accounts, search=search, status_filter=status_filter, type_filter=type_filter)
+    except mysql.connector.Error as e:
+        flash(f"Database error: {e.msg}", "danger")
+        return render_template("accounts.html", accounts=[], search=search, status_filter=status_filter, type_filter=type_filter)
 
 @app.route("/accounts/open", methods=["GET", "POST"])
 def account_open():
+    is_connected, _ = test_connection()
+    customers = []
+    branches = []
+    if is_connected:
+        try:
+            customers = execute_query("SELECT CustomerID, FirstName, LastName, Mobile FROM CUSTOMER ORDER BY FirstName", fetchall=True) or []
+            branches = execute_query("SELECT BranchID, BranchName, IFSCCode, City FROM BRANCH ORDER BY BranchName", fetchall=True) or []
+        except mysql.connector.Error:
+            pass
+
+    preselected_customer = request.args.get("customer_id", type=int)
+
     if request.method == "POST":
-        customer_id = request.form.get("CustomerID")
-        account_type = request.form.get("AccountType")
-        branch_id = request.form.get("BranchID")
-        initial_deposit = request.form.get("InitialDeposit", "0").strip()
-        holder_type = request.form.get("HolderType", "Primary")
+        customer_id = request.form.get("customer_id", type=int)
+        branch_id = request.form.get("branch_id", type=int)
+        account_type = request.form.get("account_type", "").strip()
+        opening_balance = request.form.get("opening_balance", type=float, default=0.0)
+        holder_type = request.form.get("holder_type", "Primary").strip()
 
-        try:
-            customer_id = parse_record_id(customer_id, "Customer")
-            branch_id = parse_record_id(branch_id, "Branch")
-            if account_type not in ("Saving", "Current", "Salary"):
-                raise ValueError("Select a valid account type.")
-            if holder_type not in ("Primary", "Joint"):
-                raise ValueError("Select a valid holder type.")
-            initial_deposit_decimal = parse_money(initial_deposit or "0", "Initial deposit", allow_zero=True)
-        except ValueError as exc:
-            flash(str(exc), "danger")
-            return redirect(url_for("account_open"))
+        errors = []
+        if not customer_id:
+            errors.append("Please select a valid customer.")
+        if not branch_id:
+            errors.append("Please select a branch.")
+        if account_type not in ["Saving", "Current", "Salary"]:
+            errors.append("Invalid account type selected.")
+        if opening_balance < 0:
+            errors.append("Opening balance cannot be negative.")
 
-        account_number = str(secrets.randbelow(900_000_000_000) + 100_000_000_000)
+        if errors:
+            for err in errors:
+                flash(err, "danger")
+            return render_template("account_form.html", customers=customers, branches=branches, preselected_customer=customer_id)
 
-        try:
-            with transaction() as (conn, cur):
-                cur.execute(
-                    """
-                    INSERT INTO ACCOUNT (AccountNumber, AccountType, Balance, Status, BranchID)
-                    VALUES (%s, %s, %s, 'Active', %s)
-                    """,
-                    (account_number, account_type, str(initial_deposit_decimal), branch_id),
-                )
-                account_id = cur.lastrowid
+        result = open_account_transaction(customer_id, branch_id, account_type, opening_balance, holder_type)
+        if result["success"]:
+            flash(result["message"], "success")
+            return redirect(url_for("account_detail", account_id=result["account_id"]))
+        else:
+            flash(result["message"], "danger")
+            return render_template("account_form.html", customers=customers, branches=branches, preselected_customer=customer_id)
 
-                cur.execute(
-                    """
-                    INSERT INTO ACCOUNT_HOLDER (CustomerID, AccountID, HolderType)
-                    VALUES (%s, %s, %s)
-                    """,
-                    (customer_id, account_id, holder_type),
-                )
-
-                if initial_deposit_decimal > 0:
-                    ref = f"OPEN-{account_number}-{uuid.uuid4().hex[:10].upper()}"
-                    cur.execute(
-                        """
-                        INSERT INTO BANK_TRANSACTION (AccountID, TransactionType, Amount, Description, ReferenceNumber, TransactionStatus)
-                        VALUES (%s, 'DEPOSIT', %s, 'Initial deposit at account opening', %s, 'SUCCESS')
-                        """,
-                        (account_id, str(initial_deposit_decimal), ref),
-                    )
-            flash(f"Account opened successfully. Account Number: {account_number}", "success")
-            return redirect(url_for("accounts"))
-        except Exception as exc:
-            if "uq_account_number" in str(exc):
-                flash("Account number generation conflict. Please try again.", "danger")
-            elif "FOREIGN KEY" in str(exc):
-                flash("Invalid customer or branch selection.", "danger")
-            elif "CHK" in str(exc).upper():
-                flash("Constraint validation failed while opening the account.", "danger")
-            else:
-                flash("Could not open account. All operations were rolled back.", "danger")
-            return redirect(url_for("account_open"))
-
-    customers = query_all("SELECT CustomerID, FirstName, LastName, Mobile FROM CUSTOMER ORDER BY CustomerID")
-    branches = query_all("SELECT BranchID, BranchName, City FROM BRANCH ORDER BY BranchID")
-    return render_template("account_form.html", customers=customers, branches=branches)
-
+    return render_template("account_form.html", customers=customers, branches=branches, preselected_customer=preselected_customer)
 
 @app.route("/accounts/<int:account_id>")
 def account_detail(account_id):
-    account = query_one(
-        """
-        SELECT a.*, b.BranchName, b.IFSCCode, b.City, b.State
-        FROM ACCOUNT a
-        JOIN BRANCH b ON b.BranchID = a.BranchID
-        WHERE a.AccountID = %s
-        """,
-        (account_id,),
-    )
-    if not account:
-        return render_template("404.html", message="Account not found"), 404
-    holders = query_all(
-        """
-        SELECT c.*, ah.HolderType, ah.HolderSince
-        FROM ACCOUNT_HOLDER ah
-        JOIN CUSTOMER c ON c.CustomerID = ah.CustomerID
-        WHERE ah.AccountID = %s
-        ORDER BY ah.HolderType DESC, c.CustomerID
-        """,
-        (account_id,),
-    )
-    transactions = query_all(
-        """
-        SELECT * FROM BANK_TRANSACTION
-        WHERE AccountID = %s
-        ORDER BY TransactionDate DESC, TransactionID DESC
-        LIMIT 100
-        """,
-        (account_id,),
-    )
-    return render_template("account_detail.html", account=account, holders=holders, transactions=transactions)
+    is_connected, _ = test_connection()
+    if not is_connected:
+        flash("MySQL database is not connected.", "warning")
+        return redirect(url_for("account_list"))
 
-
-@app.route("/accounts/<int:account_id>/status", methods=["POST"])
-def account_status(account_id):
-    new_status = request.form.get("Status", "").strip()
-    if new_status not in ("Active", "Inactive", "Closed"):
-        flash("Select a valid account status.", "danger")
-        return redirect(url_for("account_detail", account_id=account_id))
     try:
-        with transaction() as (conn, cur):
-            cur.execute("SELECT Status, Balance FROM ACCOUNT WHERE AccountID = %s FOR UPDATE", (account_id,))
-            account = cur.fetchone()
-            if not account:
-                raise ValueError("Account not found.")
-            if account["Status"] == "Closed" and new_status != "Closed":
-                raise ValueError("A closed account cannot be reopened.")
-            if new_status == "Closed" and account["Balance"] != 0:
-                raise ValueError("An account can be closed only when its balance is zero.")
-            cur.execute("UPDATE ACCOUNT SET Status = %s WHERE AccountID = %s", (new_status, account_id))
-        flash("Account status updated successfully.", "success")
-    except ValueError as exc:
-        flash(str(exc), "danger")
-    except Exception:
-        current_app.logger.exception("Account status update failed")
-        flash("Account status could not be updated because of a database error.", "danger")
-    return redirect(url_for("account_detail", account_id=account_id))
+        account = execute_query("""
+            SELECT a.*, b.BranchName, b.IFSCCode, b.City, b.Address AS BranchAddress
+            FROM ACCOUNT a
+            JOIN BRANCH b ON a.BranchID = b.BranchID
+            WHERE a.AccountID = %s
+        """, (account_id,), fetchone=True)
 
+        if not account:
+            flash("Account not found.", "warning")
+            return redirect(url_for("account_list"))
 
-# Transactions
+        holders = execute_query("""
+            SELECT c.*, ah.HolderType, ah.HolderSince
+            FROM CUSTOMER c
+            JOIN ACCOUNT_HOLDER ah ON c.CustomerID = ah.CustomerID
+            WHERE ah.AccountID = %s
+        """, (account_id,), fetchall=True)
+
+        transactions = execute_query("""
+            SELECT * FROM BANK_TRANSACTION 
+            WHERE AccountID = %s 
+            ORDER BY TransactionDate DESC, TransactionID DESC
+        """, (account_id,), fetchall=True)
+
+        return render_template("account_detail.html", account=account, holders=holders, transactions=transactions)
+    except mysql.connector.Error as e:
+        flash(f"Database error: {e.msg}", "danger")
+        return redirect(url_for("account_list"))
+
+# ----------------------------------------------------------------------------
+# 4. DEPOSIT, WITHDRAWAL, & TRANSFER ROUTES
+# ----------------------------------------------------------------------------
 @app.route("/deposit", methods=["GET", "POST"])
 def deposit():
+    preselected_acc = request.args.get("account_id", type=int)
+    accounts = []
+    is_connected, _ = test_connection()
+    if is_connected:
+        try:
+            accounts = execute_query("""
+                SELECT a.AccountID, a.AccountNumber, a.AccountType, a.Balance, b.BranchName,
+                       CONCAT(c.FirstName, ' ', c.LastName) AS PrimaryHolder
+                FROM ACCOUNT a
+                JOIN BRANCH b ON a.BranchID = b.BranchID
+                LEFT JOIN ACCOUNT_HOLDER ah ON a.AccountID = ah.AccountID AND ah.HolderType = 'Primary'
+                LEFT JOIN CUSTOMER c ON ah.CustomerID = c.CustomerID
+                WHERE a.Status = 'Active'
+                ORDER BY a.AccountNumber
+            """, fetchall=True) or []
+        except mysql.connector.Error:
+            pass
+
     if request.method == "POST":
-        account_id = request.form.get("AccountID")
-        amount = request.form.get("Amount", "").strip()
-        description = request.form.get("Description", "Cash deposit").strip() or "Cash deposit"
+        account_id = request.form.get("account_id", type=int)
+        amount = request.form.get("amount", type=float, default=0.0)
+        description = request.form.get("description", "").strip()
 
-        try:
-            account_id = parse_record_id(account_id, "Account")
-            amount_decimal = parse_money(amount, "Deposit amount")
-            if len(description) > 255:
-                raise ValueError("Description must be 255 characters or fewer.")
-        except ValueError as exc:
-            flash(str(exc), "danger")
-            return redirect(url_for("deposit"))
+        if not account_id or amount <= 0:
+            flash("Please choose an account and enter a valid positive deposit amount.", "danger")
+            return render_template("deposit.html", accounts=accounts, preselected_acc=account_id)
 
-        try:
-            with transaction() as (conn, cur):
-                cur.execute("SELECT Balance, Status FROM ACCOUNT WHERE AccountID = %s FOR UPDATE", (account_id,))
-                account = cur.fetchone()
-                if not account:
-                    raise ValueError("Account not found")
-                if account["Status"] != "Active":
-                    raise ValueError("Cannot deposit into a non-active account")
-                new_balance = account["Balance"] + amount_decimal
-                cur.execute("UPDATE ACCOUNT SET Balance = %s WHERE AccountID = %s", (str(new_balance), account_id))
-                ref = f"DEP-{uuid.uuid4().hex[:12].upper()}"
-                cur.execute(
-                    """
-                    INSERT INTO BANK_TRANSACTION (AccountID, TransactionType, Amount, Description, ReferenceNumber, TransactionStatus)
-                    VALUES (%s, 'DEPOSIT', %s, %s, %s, 'SUCCESS')
-                    """,
-                    (account_id, str(amount_decimal), description, ref),
-                )
-            flash("Deposit completed successfully.", "success")
+        result = deposit_transaction(account_id, amount, description)
+        if result["success"]:
+            flash(result["message"], "success")
             return redirect(url_for("account_detail", account_id=account_id))
-        except ValueError as exc:
-            flash(f"Deposit failed and was rolled back: {exc}", "danger")
-            return redirect(url_for("deposit"))
-        except Exception:
-            current_app.logger.exception("Deposit failed")
-            flash("Deposit failed because of a database error. All changes were rolled back.", "danger")
-            return redirect(url_for("deposit"))
+        else:
+            flash(result["message"], "danger")
 
-    accounts = query_all("SELECT AccountID, AccountNumber, Status FROM ACCOUNT ORDER BY AccountID")
-    return render_template("deposit.html", accounts=accounts)
+    return render_template("deposit.html", accounts=accounts, preselected_acc=preselected_acc)
 
+@app.route("/withdrawal", methods=["GET", "POST"])
+def withdrawal():
+    preselected_acc = request.args.get("account_id", type=int)
+    accounts = []
+    is_connected, _ = test_connection()
+    if is_connected:
+        try:
+            accounts = execute_query("""
+                SELECT a.AccountID, a.AccountNumber, a.AccountType, a.Balance, b.BranchName,
+                       CONCAT(c.FirstName, ' ', c.LastName) AS PrimaryHolder
+                FROM ACCOUNT a
+                JOIN BRANCH b ON a.BranchID = b.BranchID
+                LEFT JOIN ACCOUNT_HOLDER ah ON a.AccountID = ah.AccountID AND ah.HolderType = 'Primary'
+                LEFT JOIN CUSTOMER c ON ah.CustomerID = c.CustomerID
+                WHERE a.Status = 'Active'
+                ORDER BY a.AccountNumber
+            """, fetchall=True) or []
+        except mysql.connector.Error:
+            pass
 
-@app.route("/withdraw", methods=["GET", "POST"])
-def withdraw():
     if request.method == "POST":
-        account_id = request.form.get("AccountID")
-        amount = request.form.get("Amount", "").strip()
-        description = request.form.get("Description", "Cash withdrawal").strip() or "Cash withdrawal"
+        account_id = request.form.get("account_id", type=int)
+        amount = request.form.get("amount", type=float, default=0.0)
+        description = request.form.get("description", "").strip()
 
-        try:
-            account_id = parse_record_id(account_id, "Account")
-            amount_decimal = parse_money(amount, "Withdrawal amount")
-            if len(description) > 255:
-                raise ValueError("Description must be 255 characters or fewer.")
-        except ValueError as exc:
-            flash(str(exc), "danger")
-            return redirect(url_for("withdraw"))
+        if not account_id or amount <= 0:
+            flash("Please choose an account and enter a positive withdrawal amount.", "danger")
+            return render_template("withdrawal.html", accounts=accounts, preselected_acc=account_id)
 
-        try:
-            with transaction() as (conn, cur):
-                cur.execute("SELECT Balance, Status FROM ACCOUNT WHERE AccountID = %s FOR UPDATE", (account_id,))
-                account = cur.fetchone()
-                if not account:
-                    raise ValueError("Account not found")
-                if account["Status"] != "Active":
-                    raise ValueError("Cannot withdraw from a non-active account")
-                if account["Balance"] < amount_decimal:
-                    raise ValueError("Insufficient balance")
-                new_balance = account["Balance"] - amount_decimal
-                if new_balance < 0:
-                    raise ValueError("Withdrawal would create a negative balance")
-                cur.execute("UPDATE ACCOUNT SET Balance = %s WHERE AccountID = %s", (str(new_balance), account_id))
-                ref = f"WDR-{uuid.uuid4().hex[:12].upper()}"
-                cur.execute(
-                    """
-                    INSERT INTO BANK_TRANSACTION (AccountID, TransactionType, Amount, Description, ReferenceNumber, TransactionStatus)
-                    VALUES (%s, 'WITHDRAWAL', %s, %s, %s, 'SUCCESS')
-                    """,
-                    (account_id, str(amount_decimal), description, ref),
-                )
-            flash("Withdrawal completed successfully.", "success")
+        result = withdrawal_transaction(account_id, amount, description)
+        if result["success"]:
+            flash(result["message"], "success")
             return redirect(url_for("account_detail", account_id=account_id))
-        except ValueError as exc:
-            flash(f"Withdrawal failed and was rolled back: {exc}", "danger")
-            return redirect(url_for("withdraw"))
-        except Exception:
-            current_app.logger.exception("Withdrawal failed")
-            flash("Withdrawal failed because of a database error. All changes were rolled back.", "danger")
-            return redirect(url_for("withdraw"))
+        else:
+            flash(result["message"], "danger")
 
-    accounts = query_all("SELECT AccountID, AccountNumber, Status FROM ACCOUNT ORDER BY AccountID")
-    return render_template("withdrawal.html", accounts=accounts)
-
+    return render_template("withdrawal.html", accounts=accounts, preselected_acc=preselected_acc)
 
 @app.route("/transfer", methods=["GET", "POST"])
 def transfer():
+    preselected_src = request.args.get("src_id", type=int)
+    accounts = []
+    is_connected, _ = test_connection()
+    if is_connected:
+        try:
+            accounts = execute_query("""
+                SELECT a.AccountID, a.AccountNumber, a.AccountType, a.Balance, b.BranchName,
+                       CONCAT(c.FirstName, ' ', c.LastName) AS PrimaryHolder
+                FROM ACCOUNT a
+                JOIN BRANCH b ON a.BranchID = b.BranchID
+                LEFT JOIN ACCOUNT_HOLDER ah ON a.AccountID = ah.AccountID AND ah.HolderType = 'Primary'
+                LEFT JOIN CUSTOMER c ON ah.CustomerID = c.CustomerID
+                WHERE a.Status = 'Active'
+                ORDER BY a.AccountNumber
+            """, fetchall=True) or []
+        except mysql.connector.Error:
+            pass
+
     if request.method == "POST":
-        from_account_id = request.form.get("FromAccountID")
-        to_account_id = request.form.get("ToAccountID")
-        amount = request.form.get("Amount", "").strip()
-        description = request.form.get("Description", "Fund transfer").strip() or "Fund transfer"
+        src_id = request.form.get("src_account_id", type=int)
+        dest_id = request.form.get("dest_account_id", type=int)
+        amount = request.form.get("amount", type=float, default=0.0)
+        description = request.form.get("description", "").strip()
 
-        try:
-            from_account_id = parse_record_id(from_account_id, "Source account")
-            to_account_id = parse_record_id(to_account_id, "Destination account")
-            if from_account_id == to_account_id:
-                raise ValueError("Source and destination accounts cannot be the same.")
-            amount_decimal = parse_money(amount, "Transfer amount")
-            if len(description) > 200:
-                raise ValueError("Description must be 200 characters or fewer.")
-        except ValueError as exc:
-            flash(str(exc), "danger")
-            return redirect(url_for("transfer"))
+        if not src_id or not dest_id:
+            flash("Please select both source and destination accounts.", "danger")
+            return render_template("transfer.html", accounts=accounts, preselected_src=src_id)
 
-        try:
-            with transaction() as (conn, cur):
-                ids = sorted([from_account_id, to_account_id])
-                cur.execute("SELECT AccountID, Balance, Status FROM ACCOUNT WHERE AccountID IN (%s, %s) FOR UPDATE", (ids[0], ids[1]))
-                accounts = {row["AccountID"]: row for row in cur.fetchall()}
-                from_acc = accounts.get(from_account_id)
-                to_acc = accounts.get(to_account_id)
-                if not from_acc or not to_acc:
-                    raise ValueError("Invalid source or destination account")
-                if from_acc["Status"] != "Active" or to_acc["Status"] != "Active":
-                    raise ValueError("Both accounts must be active")
-                if from_acc["Balance"] < amount_decimal:
-                    raise ValueError("Insufficient balance in source account")
-                cur.execute("UPDATE ACCOUNT SET Balance = %s WHERE AccountID = %s", (str(from_acc["Balance"] - amount_decimal), from_account_id))
-                cur.execute("UPDATE ACCOUNT SET Balance = %s WHERE AccountID = %s", (str(to_acc["Balance"] + amount_decimal), to_account_id))
-                group_ref = f"TRF-{uuid.uuid4().hex[:14].upper()}"
-                out_ref = f"{group_ref}-OUT"
-                in_ref = f"{group_ref}-IN"
-                cur.execute(
-                    """
-                    INSERT INTO BANK_TRANSACTION (AccountID, TransactionType, Amount, Description, ReferenceNumber, TransferGroupReference, TransactionStatus)
-                    VALUES (%s, 'TRANSFER_OUT', %s, %s, %s, %s, 'SUCCESS')
-                    """,
-                    (from_account_id, str(amount_decimal), f"Transfer to account ID {to_account_id} - {description}", out_ref, group_ref),
-                )
-                cur.execute(
-                    """
-                    INSERT INTO BANK_TRANSACTION (AccountID, TransactionType, Amount, Description, ReferenceNumber, TransferGroupReference, TransactionStatus)
-                    VALUES (%s, 'TRANSFER_IN', %s, %s, %s, %s, 'SUCCESS')
-                    """,
-                    (to_account_id, str(amount_decimal), f"Transfer from account ID {from_account_id} - {description}", in_ref, group_ref),
-                )
-            flash("Transfer completed successfully with both entries recorded.", "success")
+        if src_id == dest_id:
+            flash("Source and destination accounts must be different.", "warning")
+            return render_template("transfer.html", accounts=accounts, preselected_src=src_id)
+
+        if amount <= 0:
+            flash("Transfer amount must be strictly greater than zero.", "danger")
+            return render_template("transfer.html", accounts=accounts, preselected_src=src_id)
+
+        result = transfer_transaction(src_id, dest_id, amount, description)
+        if result["success"]:
+            flash(result["message"], "success")
             return redirect(url_for("transactions"))
-        except ValueError as exc:
-            flash(f"Transfer failed and was rolled back: {exc}", "danger")
-            return redirect(url_for("transfer"))
-        except Exception:
-            current_app.logger.exception("Transfer failed")
-            flash("Transfer failed because of a database error. All changes were rolled back.", "danger")
-            return redirect(url_for("transfer"))
+        else:
+            flash(result["message"], "danger")
 
-    accounts = query_all("SELECT AccountID, AccountNumber, Status FROM ACCOUNT ORDER BY AccountID")
-    return render_template("transfer.html", accounts=accounts)
+    return render_template("transfer.html", accounts=accounts, preselected_src=preselected_src)
 
-
+# ----------------------------------------------------------------------------
+# 5. TRANSACTION HISTORY ROUTE
+# ----------------------------------------------------------------------------
 @app.route("/transactions")
 def transactions():
-    account_filter = request.args.get("account_id", "").strip()
-    type_filter = request.args.get("type", "").strip()
-    if account_filter and not account_filter.isdigit():
-        account_filter = ""
-    if type_filter not in ("DEPOSIT", "WITHDRAWAL", "TRANSFER_IN", "TRANSFER_OUT"):
-        type_filter = ""
-    sql = """
-        SELECT t.*, a.AccountNumber, b.BranchName
-        FROM BANK_TRANSACTION t
-        JOIN ACCOUNT a ON a.AccountID = t.AccountID
-        JOIN BRANCH b ON b.BranchID = a.BranchID
-        WHERE 1=1
-    """
-    params = []
-    if account_filter:
-        sql += " AND t.AccountID = %s"
-        params.append(account_filter)
-    if type_filter:
-        sql += " AND t.TransactionType = %s"
-        params.append(type_filter)
-    sql += " ORDER BY t.TransactionDate DESC, t.TransactionID DESC LIMIT 200"
-    rows = query_all(sql, tuple(params))
-    accounts = query_all("SELECT AccountID, AccountNumber FROM ACCOUNT ORDER BY AccountID")
-    return render_template("transactions.html", transactions=rows, accounts=accounts, account_filter=account_filter, type_filter=type_filter)
+    tx_type = request.args.get("type", "").strip()
+    status = request.args.get("status", "").strip()
+    search = request.args.get("search", "").strip()
 
+    is_connected, _ = test_connection()
+    if not is_connected:
+        flash("MySQL database is not connected. Displaying offline mode.", "warning")
+        return render_template("transactions.html", transactions=[], tx_type=tx_type, status=status, search=search)
 
-# Branch and employee
+    try:
+        query = """
+            SELECT 
+                t.TransactionID,
+                t.ReferenceNumber,
+                t.TransactionType,
+                t.Amount,
+                t.TransactionDate,
+                t.TransactionStatus,
+                t.Description,
+                a.AccountNumber,
+                a.AccountType,
+                b.BranchName
+            FROM BANK_TRANSACTION t
+            JOIN ACCOUNT a ON t.AccountID = a.AccountID
+            JOIN BRANCH b ON a.BranchID = b.BranchID
+            WHERE 1=1
+        """
+        params = []
+        if tx_type:
+            query += " AND t.TransactionType = %s"
+            params.append(tx_type)
+        if status:
+            query += " AND t.TransactionStatus = %s"
+            params.append(status)
+        if search:
+            query += " AND (t.ReferenceNumber LIKE %s OR a.AccountNumber LIKE %s OR t.Description LIKE %s)"
+            wildcard = f"%{search}%"
+            params.extend([wildcard, wildcard, wildcard])
+
+        query += " ORDER BY t.TransactionDate DESC, t.TransactionID DESC LIMIT 100"
+        tx_list = execute_query(query, params, fetchall=True)
+        return render_template("transactions.html", transactions=tx_list, tx_type=tx_type, status=status, search=search)
+    except mysql.connector.Error as e:
+        flash(f"Database error: {e.msg}", "danger")
+        return render_template("transactions.html", transactions=[], tx_type=tx_type, status=status, search=search)
+
+# ----------------------------------------------------------------------------
+# 6. BRANCH MANAGEMENT ROUTES
+# ----------------------------------------------------------------------------
 @app.route("/branches")
-def branches():
-    rows = query_all("SELECT * FROM vw_branch_summary ORDER BY BranchID")
-    return render_template("branches.html", branches=rows)
+def branch_list():
+    is_connected, _ = test_connection()
+    if not is_connected:
+        flash("MySQL database is not connected. Displaying offline mode.", "warning")
+        return render_template("branches.html", branches=[])
 
+    try:
+        branches = execute_query("""
+            SELECT 
+                b.*,
+                COUNT(DISTINCT a.AccountID) AS TotalAccounts,
+                COALESCE(SUM(a.Balance), 0.00) AS TotalDeposits,
+                COUNT(DISTINCT e.EmployeeID) AS TotalEmployees
+            FROM BRANCH b
+            LEFT JOIN ACCOUNT a ON b.BranchID = a.BranchID AND a.Status = 'Active'
+            LEFT JOIN EMPLOYEE e ON b.BranchID = e.BranchID
+            GROUP BY b.BranchID
+            ORDER BY b.BranchID
+        """, fetchall=True)
+        return render_template("branches.html", branches=branches)
+    except mysql.connector.Error as e:
+        flash(f"Database error: {e.msg}", "danger")
+        return render_template("branches.html", branches=[])
 
-@app.route("/branches/new", methods=["GET", "POST"])
-def branch_new():
+@app.route("/branches/create", methods=["GET", "POST"])
+def branch_create():
     if request.method == "POST":
-        branch_name = request.form.get("BranchName", "").strip()
-        ifsc = request.form.get("IFSCCode", "").strip().upper()
-        address = request.form.get("Address", "").strip()
-        city = request.form.get("City", "").strip()
-        state = request.form.get("State", "").strip()
-        contact = request.form.get("ContactNumber", "").strip()
-        if not all([branch_name, ifsc, address, city, state, contact]):
-            flash("All fields are required.", "danger")
-            return render_template("branch_form.html")
-        if not IFSC_PATTERN.fullmatch(ifsc):
-            flash("IFSC must use the format ABCD0123456.", "danger")
-            return render_template("branch_form.html")
-        if not MOBILE_PATTERN.fullmatch(contact):
-            flash("Contact number must contain 10 to 15 digits.", "danger")
-            return render_template("branch_form.html")
-        if len(branch_name) > 100 or len(address) > 255 or len(city) > 80 or len(state) > 80:
-            flash("One or more branch fields are too long.", "danger")
-            return render_template("branch_form.html")
+        name = request.form.get("name", "").strip()
+        ifsc = request.form.get("ifsc", "").strip().upper()
+        address = request.form.get("address", "").strip()
+        city = request.form.get("city", "").strip()
+        state = request.form.get("state", "").strip()
+        contact = request.form.get("contact", "").strip()
+
+        errors = []
+        if not name or not ifsc or not address or not city or not state or not contact:
+            errors.append("All branch fields are required.")
+        if len(ifsc) < 8:
+            errors.append("IFSC code must be at least 8 characters long.")
+
+        if errors:
+            for err in errors:
+                flash(err, "danger")
+            return render_template("branch_form.html", form_data=request.form)
+
+        is_connected, _ = test_connection()
+        if not is_connected:
+            flash("Cannot create branch: MySQL database is disconnected.", "danger")
+            return render_template("branch_form.html", form_data=request.form)
+
         try:
-            execute(
-                "INSERT INTO BRANCH (BranchName, IFSCCode, Address, City, State, ContactNumber) VALUES (%s, %s, %s, %s, %s, %s)",
-                (branch_name, ifsc, address, city, state, contact),
-            )
-            flash("Branch created successfully.", "success")
-            return redirect(url_for("branches"))
-        except Exception as exc:
-            if "uq_branch_ifsc" in str(exc):
-                flash("IFSC code already exists.", "danger")
-            elif "CHECK" in str(exc).upper():
-                flash("Validation error: check IFSC/contact format.", "danger")
-            else:
-                flash("Could not create branch.", "danger")
-            return render_template("branch_form.html")
-    return render_template("branch_form.html")
+            existing = execute_query("SELECT BranchID FROM BRANCH WHERE IFSCCode = %s", (ifsc,), fetchone=True)
+            if existing:
+                flash(f"A branch with IFSC code {ifsc} already exists.", "warning")
+                return render_template("branch_form.html", form_data=request.form)
 
+            sql = """
+                INSERT INTO BRANCH (BranchName, IFSCCode, Address, City, State, ContactNumber)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """
+            res = execute_query(sql, (name, ifsc, address, city, state, contact), commit=True)
+            flash(f"Branch '{name}' created successfully with ID #{res['lastrowid']}!", "success")
+            return redirect(url_for("branch_list"))
+        except mysql.connector.Error as e:
+            flash(f"Database error creating branch: {e.msg}", "danger")
 
+    return render_template("branch_form.html", form_data={})
+
+# ----------------------------------------------------------------------------
+# 7. EMPLOYEE MANAGEMENT ROUTES
+# ----------------------------------------------------------------------------
 @app.route("/employees")
-def employees():
-    rows = query_all(
-        """
-        SELECT e.*, b.BranchName, b.City
-        FROM EMPLOYEE e
-        JOIN BRANCH b ON b.BranchID = e.BranchID
-        ORDER BY e.EmployeeID
-        """
-    )
-    return render_template("employees.html", employees=rows)
+def employee_list():
+    is_connected, _ = test_connection()
+    if not is_connected:
+        flash("MySQL database is not connected. Displaying offline mode.", "warning")
+        return render_template("employees.html", employees=[])
 
+    try:
+        employees = execute_query("""
+            SELECT e.*, b.BranchName, b.City AS BranchCity
+            FROM EMPLOYEE e
+            JOIN BRANCH b ON e.BranchID = b.BranchID
+            ORDER BY e.EmployeeID DESC
+        """, fetchall=True)
+        return render_template("employees.html", employees=employees)
+    except mysql.connector.Error as e:
+        flash(f"Database error: {e.msg}", "danger")
+        return render_template("employees.html", employees=[])
 
-@app.route("/employees/new", methods=["GET", "POST"])
-def employee_new():
+@app.route("/employees/create", methods=["GET", "POST"])
+def employee_create():
+    branches = []
+    is_connected, _ = test_connection()
+    if is_connected:
+        try:
+            branches = execute_query("SELECT BranchID, BranchName, City FROM BRANCH ORDER BY BranchName", fetchall=True) or []
+        except mysql.connector.Error:
+            pass
+
     if request.method == "POST":
-        employee_name = request.form.get("EmployeeName", "").strip()
-        mobile = request.form.get("Mobile", "").strip()
-        email = request.form.get("Email", "").strip().lower()
-        designation = request.form.get("Designation", "").strip()
-        salary = request.form.get("Salary", "").strip()
-        joining_date = request.form.get("JoiningDate", "").strip()
-        branch_id = request.form.get("BranchID")
+        name = request.form.get("name", "").strip()
+        mobile = request.form.get("mobile", "").strip()
+        email = request.form.get("email", "").strip()
+        designation = request.form.get("designation", "").strip()
+        salary = request.form.get("salary", type=float, default=0.0)
+        joining_date = request.form.get("joining_date", "").strip()
+        branch_id = request.form.get("branch_id", type=int)
+
+        errors = []
+        if not name or not designation or not joining_date or not branch_id:
+            errors.append("Please complete all required fields.")
+        if salary <= 0:
+            errors.append("Salary must be greater than zero.")
+        if not re.match(r"^[0-9]{10}$", mobile):
+            errors.append("Mobile number must be 10 digits.")
+
+        if errors:
+            for err in errors:
+                flash(err, "danger")
+            return render_template("employee_form.html", branches=branches, form_data=request.form)
+
+        if not is_connected:
+            flash("Cannot register employee: MySQL database is disconnected.", "danger")
+            return render_template("employee_form.html", branches=branches, form_data=request.form)
+
         try:
-            if not all([employee_name, mobile, email, designation, salary, joining_date, branch_id]):
-                raise ValueError("All fields are required.")
-            if not MOBILE_PATTERN.fullmatch(mobile):
-                raise ValueError("Mobile must contain 10 to 15 digits.")
-            if not EMAIL_PATTERN.fullmatch(email):
-                raise ValueError("Enter a valid email address.")
-            salary_decimal = parse_money(salary, "Salary")
-            parse_date_value(joining_date, "Joining date")
-            branch_id = parse_record_id(branch_id, "Branch")
-            if len(employee_name) > 100 or len(designation) > 60:
-                raise ValueError("Employee name or designation is too long.")
-        except ValueError as exc:
-            flash(str(exc), "danger")
-            return redirect(url_for("employee_new"))
-        try:
-            execute(
-                """
+            sql = """
                 INSERT INTO EMPLOYEE (EmployeeName, Mobile, Email, Designation, Salary, JoiningDate, BranchID)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """,
-                (employee_name, mobile, email, designation, str(salary_decimal), joining_date, branch_id),
-            )
-            flash("Employee added successfully.", "success")
-            return redirect(url_for("employees"))
-        except Exception as exc:
-            if "uq_employee_mobile" in str(exc):
-                flash("Employee mobile already exists.", "danger")
-            elif "uq_employee_email" in str(exc):
-                flash("Employee email already exists.", "danger")
-            elif "CHECK" in str(exc).upper():
-                flash("Validation error: check values.", "danger")
-            else:
-                flash("Could not add employee.", "danger")
-            return redirect(url_for("employee_new"))
-    branches = query_all("SELECT BranchID, BranchName FROM BRANCH ORDER BY BranchID")
-    return render_template("employee_form.html", branches=branches)
-
-
-# Loans
-def record_loan_payment(loan_id, amount_decimal, payment_mode):
-    with transaction() as (conn, cur):
-        cur.execute("SELECT LoanAmount, LoanStatus FROM LOAN WHERE LoanID = %s FOR UPDATE", (loan_id,))
-        loan = cur.fetchone()
-        if not loan:
-            raise ValueError("Loan not found.")
-        if loan["LoanStatus"] != "Approved":
-            raise ValueError("Payments are allowed only for approved loans.")
-        cur.execute("SELECT COALESCE(SUM(Amount), 0) AS paid FROM LOAN_PAYMENT WHERE LoanID = %s", (loan_id,))
-        paid = cur.fetchone()["paid"]
-        outstanding = loan["LoanAmount"] - paid
-        if amount_decimal > outstanding:
-            raise ValueError(f"Payment exceeds the outstanding amount of ₹{outstanding:,.2f}.")
-        reference = f"LPAY-{uuid.uuid4().hex[:12].upper()}"
-        cur.execute(
             """
-            INSERT INTO LOAN_PAYMENT (LoanID, Amount, PaymentMode, ReferenceNumber)
-            VALUES (%s, %s, %s, %s)
-            """,
-            (loan_id, str(amount_decimal), payment_mode, reference),
-        )
+            res = execute_query(sql, (name, mobile, email, designation, salary, joining_date, branch_id), commit=True)
+            flash(f"Employee {name} registered successfully with ID #{res['lastrowid']}!", "success")
+            return redirect(url_for("employee_list"))
+        except mysql.connector.Error as e:
+            flash(f"Database error registering employee: {e.msg}", "danger")
 
+    return render_template("employee_form.html", branches=branches, form_data={})
 
+# ----------------------------------------------------------------------------
+# 8. LOAN & LOAN PAYMENT MANAGEMENT
+# ----------------------------------------------------------------------------
 @app.route("/loans")
-def loans():
-    rows = query_all("SELECT * FROM vw_loan_payment_summary ORDER BY LoanID")
-    return render_template("loans.html", loans=rows)
+def loan_list():
+    is_connected, _ = test_connection()
+    if not is_connected:
+        flash("MySQL database is not connected. Displaying offline mode.", "warning")
+        return render_template("loans.html", loans=[])
 
-
-@app.route("/loans/<int:loan_id>")
-def loan_detail(loan_id):
-    loan = query_one("SELECT * FROM vw_loan_payment_summary WHERE LoanID = %s", (loan_id,))
-    if not loan:
-        return render_template("404.html", message="Loan not found"), 404
-    payments = query_all("SELECT * FROM LOAN_PAYMENT WHERE LoanID = %s ORDER BY PaymentDate DESC", (loan_id,))
-    return render_template("loan_detail.html", loan=loan, payments=payments)
-
-
-@app.route("/loans/<int:loan_id>/decision/<decision>", methods=["POST"])
-def loan_decision(loan_id, decision):
-    if decision not in ("approve", "reject"):
-        flash("Invalid loan decision.", "danger")
-        return redirect(url_for("loans"))
-    new_status = "Approved" if decision == "approve" else "Rejected"
     try:
-        with transaction() as (conn, cur):
-            cur.execute("SELECT LoanStatus FROM LOAN WHERE LoanID = %s FOR UPDATE", (loan_id,))
-            loan = cur.fetchone()
-            if not loan:
-                raise ValueError("Loan not found.")
-            if loan["LoanStatus"] != "Pending":
-                raise ValueError("Only a pending loan can be approved or rejected.")
-            cur.execute("UPDATE LOAN SET LoanStatus = %s WHERE LoanID = %s", (new_status, loan_id))
-        flash(f"Loan {new_status.lower()} successfully.", "success")
-    except ValueError as exc:
-        flash(str(exc), "danger")
-    except Exception:
-        current_app.logger.exception("Loan decision failed")
-        flash("The loan decision could not be saved.", "danger")
-    return redirect(url_for("loans"))
+        loans = execute_query("""
+            SELECT 
+                l.*,
+                CONCAT(c.FirstName, ' ', c.LastName) AS BorrowerName,
+                c.Mobile AS BorrowerMobile,
+                b.BranchName,
+                COALESCE(SUM(lp.Amount), 0.00) AS TotalPaid,
+                (l.LoanAmount - COALESCE(SUM(lp.Amount), 0.00)) AS OutstandingBalance
+            FROM LOAN l
+            JOIN CUSTOMER c ON l.CustomerID = c.CustomerID
+            JOIN BRANCH b ON l.BranchID = b.BranchID
+            LEFT JOIN LOAN_PAYMENT lp ON l.LoanID = lp.LoanID
+            GROUP BY l.LoanID
+            ORDER BY l.LoanID DESC
+        """, fetchall=True)
+        return render_template("loans.html", loans=loans)
+    except mysql.connector.Error as e:
+        flash(f"Database error: {e.msg}", "danger")
+        return render_template("loans.html", loans=[])
 
+@app.route("/loans/create", methods=["GET", "POST"])
+def loan_create():
+    customers = []
+    branches = []
+    is_connected, _ = test_connection()
+    if is_connected:
+        try:
+            customers = execute_query("SELECT CustomerID, FirstName, LastName, Mobile FROM CUSTOMER ORDER BY FirstName", fetchall=True) or []
+            branches = execute_query("SELECT BranchID, BranchName FROM BRANCH ORDER BY BranchName", fetchall=True) or []
+        except mysql.connector.Error:
+            pass
 
-@app.route("/loans/<int:loan_id>/pay", methods=["POST"])
-def loan_payment_create(loan_id):
-    amount = request.form.get("Amount", "").strip()
-    payment_mode = request.form.get("PaymentMode", "").strip()
-    try:
-        amount_decimal = parse_money(amount, "Payment amount")
-        if payment_mode not in ("Cash", "Cheque", "NEFT", "UPI", "Card"):
-            raise ValueError("Select a valid payment mode.")
-        record_loan_payment(loan_id, amount_decimal, payment_mode)
-        flash("Loan payment recorded successfully.", "success")
-    except ValueError as exc:
-        flash(str(exc), "danger")
-    except Exception:
-        current_app.logger.exception("Loan payment failed")
-        flash("Loan payment failed because of a database error.", "danger")
-    return redirect(url_for("loan_detail", loan_id=loan_id))
-
-
-@app.route("/loans/new", methods=["GET", "POST"])
-def loan_new():
     if request.method == "POST":
-        customer_id = request.form.get("CustomerID")
-        branch_id = request.form.get("BranchID")
-        loan_type = request.form.get("LoanType")
-        loan_amount = request.form.get("LoanAmount", "").strip()
-        interest_rate = request.form.get("InterestRate", "").strip()
-        start_date = request.form.get("StartDate", "").strip()
-        tenure_months = request.form.get("TenureMonths", "").strip()
+        customer_id = request.form.get("customer_id", type=int)
+        branch_id = request.form.get("branch_id", type=int)
+        loan_type = request.form.get("loan_type", "").strip()
+        amount = request.form.get("amount", type=float, default=0.0)
+        rate = request.form.get("rate", type=float, default=0.0)
+        start_date = request.form.get("start_date", "").strip()
+        tenure = request.form.get("tenure", type=int, default=0)
+
+        errors = []
+        if not customer_id or not branch_id:
+            errors.append("Customer and Branch are required.")
+        if loan_type not in ["Home Loan", "Education Loan", "Personal Loan", "Vehicle Loan"]:
+            errors.append("Invalid loan type.")
+        if amount <= 0:
+            errors.append("Loan amount must be strictly positive.")
+        if rate < 0:
+            errors.append("Interest rate cannot be negative.")
+        if tenure <= 0:
+            errors.append("Tenure must be at least 1 month.")
+
+        if errors:
+            for err in errors:
+                flash(err, "danger")
+            return render_template("loan_form.html", customers=customers, branches=branches, form_data=request.form)
+
+        if not is_connected:
+            flash("Cannot sanction loan: MySQL database is disconnected.", "danger")
+            return render_template("loan_form.html", customers=customers, branches=branches, form_data=request.form)
+
         try:
-            if not all([customer_id, branch_id, loan_type, loan_amount, interest_rate, start_date, tenure_months]):
-                raise ValueError("All fields are required.")
-            customer_id = parse_record_id(customer_id, "Customer")
-            branch_id = parse_record_id(branch_id, "Branch")
-            if loan_type not in ("Home Loan", "Education Loan", "Personal Loan", "Vehicle Loan"):
-                raise ValueError("Select a valid loan type.")
-            loan_amount = parse_money(loan_amount, "Loan amount")
-            try:
-                interest_rate = Decimal(interest_rate)
-            except InvalidOperation:
-                raise ValueError("Interest rate must be a number.")
-            if interest_rate < 0 or interest_rate > 50:
-                raise ValueError("Interest rate must be between 0 and 50.")
-            start_date = parse_date_value(start_date, "Start date")
-            if not str(tenure_months).isdigit():
-                raise ValueError("Tenure must be a whole number of months.")
-            tenure_months = int(tenure_months)
-            if tenure_months < 1 or tenure_months > 600:
-                raise ValueError("Tenure must be between 1 and 600 months.")
-        except ValueError as exc:
-            flash(str(exc), "danger")
-            return redirect(url_for("loan_new"))
-        try:
-            execute(
-                """
+            sql = """
                 INSERT INTO LOAN (CustomerID, BranchID, LoanType, LoanAmount, InterestRate, StartDate, TenureMonths, LoanStatus)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, 'Pending')
-                """,
-                (customer_id, branch_id, loan_type, loan_amount, interest_rate, start_date, tenure_months),
-            )
-            flash("Loan application submitted with status Pending.", "success")
-            return redirect(url_for("loans"))
-        except Exception as exc:
-            if "CHECK" in str(exc).upper():
-                flash("Validation error: check loan amount, interest rate, or tenure.", "danger")
-            elif "FOREIGN KEY" in str(exc):
-                flash("Invalid customer or branch selection.", "danger")
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'Active')
+            """
+            res = execute_query(sql, (customer_id, branch_id, loan_type, amount, rate, start_date, tenure), commit=True)
+            flash(f"Loan #{res['lastrowid']} sanctioned and activated successfully!", "success")
+            return redirect(url_for("loan_list"))
+        except mysql.connector.Error as e:
+            flash(f"Database error creating loan: {e.msg}", "danger")
+
+    return render_template("loan_form.html", customers=customers, branches=branches, form_data={})
+
+@app.route("/loans/<int:loan_id>/payments", methods=["GET", "POST"])
+def loan_payments(loan_id):
+    is_connected, _ = test_connection()
+    if not is_connected:
+        flash("MySQL database is not connected.", "warning")
+        return redirect(url_for("loan_list"))
+
+    try:
+        loan = execute_query("""
+            SELECT l.*, CONCAT(c.FirstName, ' ', c.LastName) AS BorrowerName, b.BranchName
+            FROM LOAN l
+            JOIN CUSTOMER c ON l.CustomerID = c.CustomerID
+            JOIN BRANCH b ON l.BranchID = b.BranchID
+            WHERE l.LoanID = %s
+        """, (loan_id,), fetchone=True)
+
+        if not loan:
+            flash("Loan not found.", "warning")
+            return redirect(url_for("loan_list"))
+
+        if request.method == "POST":
+            amount = request.form.get("amount", type=float, default=0.0)
+            mode = request.form.get("payment_mode", "Online").strip()
+
+            if amount <= 0:
+                flash("Repayment amount must be positive.", "danger")
             else:
-                flash("Could not submit loan application.", "danger")
-            return redirect(url_for("loan_new"))
-    customers = query_all("SELECT CustomerID, FirstName, LastName FROM CUSTOMER ORDER BY CustomerID")
-    branches = query_all("SELECT BranchID, BranchName FROM BRANCH ORDER BY BranchID")
-    return render_template("loan_form.html", customers=customers, branches=branches)
+                result = record_loan_payment_transaction(loan_id, amount, mode)
+                if result["success"]:
+                    flash(result["message"], "success")
+                else:
+                    flash(result["message"], "danger")
+                return redirect(url_for("loan_payments", loan_id=loan_id))
 
+        payments = execute_query("SELECT * FROM LOAN_PAYMENT WHERE LoanID = %s ORDER BY PaymentDate DESC", (loan_id,), fetchall=True)
+        total_paid = sum(float(p["Amount"]) for p in payments)
+        outstanding = max(0.0, float(loan["LoanAmount"]) - total_paid)
 
-@app.route("/loans/payments", methods=["GET", "POST"])
-def loan_payments():
-    if request.method == "POST":
-        loan_id = request.form.get("LoanID")
-        amount = request.form.get("Amount", "").strip()
-        payment_mode = request.form.get("PaymentMode")
+        return render_template("loan_payments.html", loan=loan, payments=payments, total_paid=total_paid, outstanding=outstanding)
+    except mysql.connector.Error as e:
+        flash(f"Database error: {e.msg}", "danger")
+        return redirect(url_for("loan_list"))
+
+# ----------------------------------------------------------------------------
+# 9. LIVE SQL BUSINESS QUERIES RUNNER
+# ----------------------------------------------------------------------------
+BUSINESS_QUERIES = [
+    {
+        "id": 1,
+        "title": "All Customers with Linked Bank Accounts",
+        "description": "Customer 360-degree overview showing customer contact details, accounts, types, balances, and branch names.",
+        "concepts": "Multi-table INNER JOIN, String Concatenation, Aliasing",
+        "sql": """SELECT 
+    c.CustomerID,
+    CONCAT(c.FirstName, ' ', c.LastName) AS FullName,
+    c.Email,
+    a.AccountNumber,
+    a.AccountType,
+    a.Balance,
+    b.BranchName
+FROM CUSTOMER c
+JOIN ACCOUNT_HOLDER ah ON c.CustomerID = ah.CustomerID
+JOIN ACCOUNT a ON ah.AccountID = a.AccountID
+JOIN BRANCH b ON a.BranchID = b.BranchID
+ORDER BY c.CustomerID, a.AccountNumber;"""
+    },
+    {
+        "id": 2,
+        "title": "Customers Holding Multiple Accounts",
+        "description": "Identifies high-engagement customers who own more than one bank account.",
+        "concepts": "GROUP BY, HAVING COUNT(*) > 1, Aggregation",
+        "sql": """SELECT 
+    c.CustomerID,
+    CONCAT(c.FirstName, ' ', c.LastName) AS FullName,
+    c.Mobile,
+    COUNT(ah.AccountID) AS TotalAccountsOwned
+FROM CUSTOMER c
+JOIN ACCOUNT_HOLDER ah ON c.CustomerID = ah.CustomerID
+GROUP BY c.CustomerID, c.FirstName, c.LastName, c.Mobile
+HAVING COUNT(ah.AccountID) > 1
+ORDER BY TotalAccountsOwned DESC;"""
+    },
+    {
+        "id": 3,
+        "title": "Accounts with Branch Details & Branch Managers",
+        "description": "Lists all bank accounts along with branch details and designated branch managers.",
+        "concepts": "Multi-table JOIN, Conditional Left Join on Designation",
+        "sql": """SELECT 
+    a.AccountNumber,
+    a.AccountType,
+    a.Balance,
+    a.Status,
+    b.BranchName,
+    b.City AS BranchCity,
+    e.EmployeeName AS BranchManager
+FROM ACCOUNT a
+JOIN BRANCH b ON a.BranchID = b.BranchID
+LEFT JOIN EMPLOYEE e ON b.BranchID = e.BranchID AND e.Designation = 'Branch Manager'
+ORDER BY b.BranchName, a.AccountNumber;"""
+    },
+    {
+        "id": 4,
+        "title": "Total Deposits & Average Balance Per Branch",
+        "description": "Evaluates branch financial health, customer balance distribution, and active accounts count.",
+        "concepts": "GROUP BY, Aggregate Functions (SUM, AVG, COUNT), COALESCE",
+        "sql": """SELECT 
+    b.BranchID,
+    b.BranchName,
+    COUNT(a.AccountID) AS ActiveAccountsCount,
+    COALESCE(SUM(a.Balance), 0.00) AS TotalDeposits,
+    COALESCE(ROUND(AVG(a.Balance), 2), 0.00) AS AverageBalance
+FROM BRANCH b
+LEFT JOIN ACCOUNT a ON b.BranchID = a.BranchID AND a.Status = 'Active'
+GROUP BY b.BranchID, b.BranchName
+ORDER BY TotalDeposits DESC;"""
+    },
+    {
+        "id": 5,
+        "title": "High-Net-Worth Accounts (Above Bank Average)",
+        "description": "Filters accounts having a balance strictly greater than the overall system average balance.",
+        "concepts": "Scalar Subquery, Comparison against Nested Aggregation",
+        "sql": """SELECT 
+    a.AccountNumber,
+    a.AccountType,
+    a.Balance,
+    a.Status,
+    b.BranchName
+FROM ACCOUNT a
+JOIN BRANCH b ON a.BranchID = b.BranchID
+WHERE a.Balance > (
+    SELECT AVG(Balance) FROM ACCOUNT WHERE Status = 'Active'
+)
+ORDER BY a.Balance DESC;"""
+    },
+    {
+        "id": 6,
+        "title": "Cash Flow Summary by Account (Inflows vs Outflows)",
+        "description": "Profiles transaction volume per account: total money deposited/transferred-in vs withdrawn/transferred-out.",
+        "concepts": "Conditional Aggregation (SUM CASE), LEFT JOIN, GROUP BY",
+        "sql": """SELECT 
+    a.AccountNumber,
+    a.AccountType,
+    COALESCE(SUM(CASE WHEN t.TransactionType IN ('DEPOSIT', 'TRANSFER_IN') THEN t.Amount ELSE 0 END), 0.00) AS TotalInflow,
+    COALESCE(SUM(CASE WHEN t.TransactionType IN ('WITHDRAWAL', 'TRANSFER_OUT') THEN t.Amount ELSE 0 END), 0.00) AS TotalOutflow,
+    COALESCE(SUM(CASE WHEN t.TransactionType IN ('DEPOSIT', 'TRANSFER_IN') THEN t.Amount ELSE -t.Amount END), 0.00) AS NetTransactionVolume
+FROM ACCOUNT a
+LEFT JOIN BANK_TRANSACTION t ON a.AccountID = t.AccountID AND t.TransactionStatus = 'SUCCESS'
+GROUP BY a.AccountID, a.AccountNumber, a.AccountType
+ORDER BY NetTransactionVolume DESC;"""
+    },
+    {
+        "id": 7,
+        "title": "Customer Statement & Passbook Ledger (Customer #1)",
+        "description": "Retrieves comprehensive chronological transactions across all accounts belonging to Customer #1.",
+        "concepts": "4-Table JOIN (CUSTOMER -> ACCOUNT_HOLDER -> ACCOUNT -> BANK_TRANSACTION)",
+        "sql": """SELECT 
+    t.TransactionID,
+    t.ReferenceNumber,
+    t.TransactionDate,
+    a.AccountNumber,
+    t.TransactionType,
+    t.Amount,
+    t.Description
+FROM BANK_TRANSACTION t
+JOIN ACCOUNT a ON t.AccountID = a.AccountID
+JOIN ACCOUNT_HOLDER ah ON a.AccountID = ah.AccountID
+WHERE ah.CustomerID = 1
+ORDER BY t.TransactionDate DESC;"""
+    },
+    {
+        "id": 8,
+        "title": "Customers Without Any Bank Accounts",
+        "description": "Finds registered customers who have not opened any account yet (dormant lead identification).",
+        "concepts": "LEFT JOIN with IS NULL Filter, Set Difference Emulation",
+        "sql": """SELECT 
+    c.CustomerID,
+    CONCAT(c.FirstName, ' ', c.LastName) AS FullName,
+    c.Email,
+    c.Mobile,
+    c.RegistrationDate
+FROM CUSTOMER c
+LEFT JOIN ACCOUNT_HOLDER ah ON c.CustomerID = ah.CustomerID
+WHERE ah.AccountID IS NULL;"""
+    },
+    {
+        "id": 9,
+        "title": "Branch Staffing and Payroll Expenditure",
+        "description": "Aggregates total staff head-count, total monthly salary expenditure, and average employee salary by branch.",
+        "concepts": "GROUP BY, Aggregation (COUNT, SUM, AVG), Rounding",
+        "sql": """SELECT 
+    b.BranchName,
+    b.City,
+    COUNT(e.EmployeeID) AS EmployeeCount,
+    COALESCE(SUM(e.Salary), 0.00) AS TotalPayrollCost,
+    COALESCE(ROUND(AVG(e.Salary), 2), 0.00) AS AverageSalary
+FROM BRANCH b
+LEFT JOIN EMPLOYEE e ON b.BranchID = e.BranchID
+GROUP BY b.BranchID, b.BranchName, b.City
+ORDER BY TotalPayrollCost DESC;"""
+    },
+    {
+        "id": 10,
+        "title": "Top Account by Balance in Each Branch",
+        "description": "Identifies the highest-balance account for each branch using a correlated subquery.",
+        "concepts": "Correlated Subquery, Subquery in WHERE clause",
+        "sql": """SELECT 
+    b.BranchName,
+    a.AccountNumber,
+    a.AccountType,
+    a.Balance
+FROM ACCOUNT a
+JOIN BRANCH b ON a.BranchID = b.BranchID
+WHERE a.Balance = (
+    SELECT MAX(sub_a.Balance)
+    FROM ACCOUNT sub_a
+    WHERE sub_a.BranchID = a.BranchID AND sub_a.Status = 'Active'
+)
+ORDER BY a.Balance DESC;"""
+    },
+    {
+        "id": 11,
+        "title": "Customers Holding Active Loans",
+        "description": "Lists borrowers currently servicing an active bank loan, with sanction amount and tenure.",
+        "concepts": "Multi-table JOIN with WHERE filter, ORDER BY",
+        "sql": """SELECT 
+    CONCAT(c.FirstName, ' ', c.LastName) AS CustomerName,
+    c.Mobile,
+    l.LoanType,
+    l.LoanAmount,
+    l.InterestRate,
+    l.TenureMonths,
+    b.BranchName
+FROM LOAN l
+JOIN CUSTOMER c ON l.CustomerID = c.CustomerID
+JOIN BRANCH b ON l.BranchID = b.BranchID
+WHERE l.LoanStatus = 'Active'
+ORDER BY l.LoanAmount DESC;"""
+    },
+    {
+        "id": 12,
+        "title": "Loan Portfolio Breakdown by Category",
+        "description": "Aggregates loan sanctions, exposure volume, and average interest rate across loan categories.",
+        "concepts": "GROUP BY, Aggregate Functions (COUNT, SUM, AVG)",
+        "sql": """SELECT 
+    LoanType,
+    COUNT(LoanID) AS TotalLoansCount,
+    SUM(LoanAmount) AS TotalSanctionedAmount,
+    ROUND(AVG(InterestRate), 2) AS AverageInterestRate
+FROM LOAN
+GROUP BY LoanType
+ORDER BY TotalSanctionedAmount DESC;"""
+    },
+    {
+        "id": 13,
+        "title": "Loan Repayment Progress (Sanctioned vs Repaid vs Outstanding)",
+        "description": "Tracks loan recovery, total principal repaid, and outstanding debt for credit monitoring.",
+        "concepts": "LEFT JOIN Aggregation, Arithmetic Computation across Tables",
+        "sql": """SELECT 
+    l.LoanID,
+    CONCAT(c.FirstName, ' ', c.LastName) AS BorrowerName,
+    l.LoanType,
+    l.LoanAmount AS SanctionedAmount,
+    COALESCE(SUM(lp.Amount), 0.00) AS TotalRepaid,
+    (l.LoanAmount - COALESCE(SUM(lp.Amount), 0.00)) AS OutstandingBalance
+FROM LOAN l
+JOIN CUSTOMER c ON l.CustomerID = c.CustomerID
+LEFT JOIN LOAN_PAYMENT lp ON l.LoanID = lp.LoanID
+GROUP BY l.LoanID, c.FirstName, c.LastName, l.LoanType, l.LoanAmount
+ORDER BY OutstandingBalance DESC;"""
+    },
+    {
+        "id": 14,
+        "title": "Inactive and Zero-Balance Accounts Audit",
+        "description": "Identifies accounts flagged as Inactive, Closed, or holding zero balance for compliance review.",
+        "concepts": "Boolean Logic (OR, IN), Multi-condition Filter",
+        "sql": """SELECT 
+    a.AccountNumber,
+    a.AccountType,
+    a.Balance,
+    a.Status,
+    b.BranchName,
+    a.OpeningDate
+FROM ACCOUNT a
+JOIN BRANCH b ON a.BranchID = b.BranchID
+WHERE a.Status IN ('Inactive', 'Closed') OR a.Balance = 0.00
+ORDER BY a.Balance ASC, a.OpeningDate DESC;"""
+    },
+    {
+        "id": 15,
+        "title": "Inter-Account Transfer Audit with Matching Counterparts",
+        "description": "Reconciles fund transfers by pairing TRANSFER_OUT and TRANSFER_IN entries sharing the same ReferenceNumber.",
+        "concepts": "Self-Join on Ledger Table, Paired Transaction Reconciliation",
+        "sql": """SELECT 
+    t_out.ReferenceNumber,
+    t_out.TransactionDate AS TransferDate,
+    acc_from.AccountNumber AS SenderAccount,
+    acc_to.AccountNumber AS ReceiverAccount,
+    t_out.Amount AS TransferredAmount
+FROM BANK_TRANSACTION t_out
+JOIN BANK_TRANSACTION t_in ON t_out.ReferenceNumber = t_in.ReferenceNumber
+JOIN ACCOUNT acc_from ON t_out.AccountID = acc_from.AccountID
+JOIN ACCOUNT acc_to ON t_in.AccountID = acc_to.AccountID
+WHERE t_out.TransactionType = 'TRANSFER_OUT' 
+  AND t_in.TransactionType = 'TRANSFER_IN'
+ORDER BY t_out.TransactionDate DESC;"""
+    }
+]
+
+@app.route("/business-queries")
+def business_queries():
+    query_id = request.args.get("query_id", type=int, default=1)
+    selected_query = next((q for q in BUSINESS_QUERIES if q["id"] == query_id), BUSINESS_QUERIES[0])
+
+    results = []
+    columns = []
+    error_msg = None
+
+    is_connected, _ = test_connection()
+    if is_connected:
         try:
-            loan_id = parse_record_id(loan_id, "Loan")
-            amount_decimal = parse_money(amount, "Payment amount")
-            if payment_mode not in ("Cash", "Cheque", "NEFT", "UPI", "Card"):
-                raise ValueError("Select a valid payment mode.")
-            record_loan_payment(loan_id, amount_decimal, payment_mode)
-            flash("Loan payment recorded successfully.", "success")
-        except ValueError as exc:
-            flash(str(exc), "danger")
-        except Exception:
-            current_app.logger.exception("Loan payment failed")
-            flash("Loan payment failed because of a database error.", "danger")
-        return redirect(url_for("loan_payments"))
-    loans = query_all("SELECT LoanID, CustomerID, LoanType, LoanStatus FROM LOAN ORDER BY LoanID")
-    payments = query_all(
-        """
-        SELECT lp.*, l.LoanType, CONCAT(c.FirstName, ' ', c.LastName) AS CustomerName
-        FROM LOAN_PAYMENT lp
-        JOIN LOAN l ON l.LoanID = lp.LoanID
-        JOIN CUSTOMER c ON c.CustomerID = l.CustomerID
-        ORDER BY lp.PaymentDate DESC
-        """
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(selected_query["sql"])
+            results = cursor.fetchall()
+            if results:
+                columns = list(results[0].keys())
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as e:
+            error_msg = f"SQL Execution Error: {e.msg}"
+    else:
+        error_msg = "Database not currently connected. Please configure your MySQL credentials in .env to run live queries."
+
+    return render_template(
+        "business_queries.html",
+        queries=BUSINESS_QUERIES,
+        selected_query=selected_query,
+        results=results,
+        columns=columns,
+        error_msg=error_msg
     )
-    return render_template("loan_payments.html", loans=loans, payments=payments)
 
-
+# ----------------------------------------------------------------------------
+# ERROR HANDLERS
+# ----------------------------------------------------------------------------
 @app.errorhandler(404)
-def not_found(error):
+def not_found_error(error):
     return render_template("404.html"), 404
 
-
-@app.errorhandler(CSRFError)
-def csrf_error(error):
-    return render_template("error.html", error_message="The form security token expired or was invalid. Reload the page and try again."), 400
-
-
 @app.errorhandler(500)
-def server_error(error):
-    current_app.logger.exception("Unhandled application error")
-    return render_template("error.html", error_message="An internal error occurred. Check the application log."), 500
-
+def internal_error(error):
+    return render_template("error.html", error_message="Internal server error occurred. Please verify database connectivity."), 500
 
 if __name__ == "__main__":
-    try:
-        check_connection()
-    except Exception as exc:
-        print(f"Database connection failed: {exc}")
-        print("Configure .env with correct DB credentials and ensure project_kashi database exists.")
-    app.run(debug=app.config["FLASK_DEBUG"], host="127.0.0.1", port=5000)
+    app.run(host="127.0.0.1", port=5000, debug=True)

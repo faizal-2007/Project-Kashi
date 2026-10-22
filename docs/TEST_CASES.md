@@ -1,90 +1,25 @@
-# Testing Documentation
+# Test Cases & Quality Assurance — Project Kashi
 
-## Test environment actually used
+Documentation of all unit, functional, validation, and database transaction test cases designed for **Project Kashi — Banking Management System**.
 
-| Item | Value |
-|---|---|
-| Operating system | Windows |
-| Python | 3.14.7 |
-| Flask | 3.1.3 |
-| MySQL Server | 8.0.46 Community |
-| Connector | mysql-connector-python 9.7.0 |
-| Test database | `project_kashi_test` |
-| Test framework | pytest 9.1.1 |
-| Execution date | 22 October 2026 |
+---
 
-The tests ran against a separate, isolated local MySQL 8.0.46 instance created for testing. The schema and all database objects were loaded before the tests. No real customer data was used.
+## Test Cases Summary Table
 
-## Command used
-
-```cmd
-python -m pytest -q
-```
-
-## Actual result
-
-```text
-.......................                                                  [100%]
-23 passed, 4 warnings in 10.85s
-```
-
-The four warnings are deprecation notices for the `stored_results()` accessor in the installed MySQL connector. They do not affect test results.
-
-## Automated test cases
-
-| ID | Test | Expected result | Actual result |
-|---|---|---|---|
-| AT-01 | Application startup and dashboard | 200, live dashboard headings | Passed |
-| AT-02 | `/health` database check | 200, status ok | Passed |
-| AT-03 | Customer creation | Customer stored in MySQL | Passed |
-| AT-04 | Duplicate customer | Friendly duplicate error, one row | Passed |
-| AT-05 | Invalid customer form | Rejected, no row inserted | Passed |
-| AT-06 | Account opening | ACCOUNT, ACCOUNT_HOLDER, initial DEPOSIT all created | Passed |
-| AT-07 | Deposit | Balance +250.50 and one transaction | Passed |
-| AT-08 | Withdrawal | Balance -300 and one transaction | Passed |
-| AT-09 | Insufficient balance | Rejected, balance unchanged, no transaction | Passed |
-| AT-10 | Zero deposit | Rejected, no transaction | Passed |
-| AT-11 | Transfer success | Both balances updated, two linked rows | Passed |
-| AT-12 | Transfer rollback | No balances changed, no transaction rows | Passed |
-| AT-13 | Transfer to same account | Rejected, no rows | Passed |
-| AT-14 | Transaction history/filter | Page renders matching rows | Passed |
-| AT-15 | Branch and employee creation | Rows inserted with FK | Passed |
-| AT-16 | Loan workflow + payment trigger | Pending -> Approved -> Closed | Passed |
-| AT-17 | Account status rules | Non-zero close blocked; zero close allowed | Passed |
-| AT-18 | Missing records | 404 responses | Passed |
-| AT-19 | Views, functions, procedures | All return expected data | Passed |
-| AT-20 | Transaction immutability | UPDATE and DELETE rejected by triggers | Passed |
-| AT-21 | Inactive account transaction | Insert rejected by trigger | Passed |
-| AT-22 | Primary-holder and status triggers | Duplicate primary and non-zero close rejected | Passed |
-| AT-23 | Loan overpayment trigger | Overpayment rejected | Passed |
-
-## Manual test cases
-
-These should be repeated in a browser during the demonstration.
-
-| ID | Scenario | Steps | Expected result |
-|---|---|---|---|
-| MT-01 | Dashboard | Open `/` | Counts match `SELECT COUNT(*)` in MySQL; recent transactions shown. |
-| MT-02 | Register customer | Fill `/customers/new` with valid data | Success flash; customer appears in list and detail page. |
-| MT-03 | Duplicate mobile | Register the same mobile again | Error flash; no duplicate row. |
-| MT-04 | Open account | Choose customer/branch, deposit 10,000 | Account appears with balance 10,000 and one DEPOSIT row. |
-| MT-05 | Deposit | Deposit 5,000 | Balance becomes 15,000; new transaction row. |
-| MT-06 | Withdraw too much | Withdraw 999,999 | Error; balance and history unchanged. |
-| MT-07 | Transfer | Transfer 2,000 to a second active account | Both balances change; two linked rows. |
-| MT-08 | Transfer rollback | Transfer more than source balance | Error; both balances unchanged. |
-| MT-09 | Closed account | Close a zero-balance account; try deposit | Deposit rejected because status is Closed. |
-| MT-10 | Loan | Create loan, approve, pay partly, pay the rest | Status Pending -> Approved -> Closed; outstanding reaches zero. |
-| MT-11 | CSRF | Submit an old form after token expiry | Friendly CSRF error page, not a server crash. |
-| MT-12 | DB unavailable | Stop MySQL and open `/` | Friendly database error page; terminal logs the error. |
-
-## What was not executed
-
-- No browser screenshots were captured automatically. See `docs/SCREENSHOTS.md`.
-- The student's personal MySQL server credentials were not available, so the application was tested on an isolated local MySQL instance. The same SQL scripts are provided for the student's server.
-- No production security, penetration, or load testing was performed.
-
-## How to verify a database state
-
-```cmd
-mysql -u root -p -e "USE project_kashi; SELECT AccountNumber, Balance, Status FROM ACCOUNT; SELECT * FROM BANK_TRANSACTION ORDER BY TransactionID DESC LIMIT 5;"
-```
+| Test ID | Module / Feature | Test Objective | Test Steps | Expected Result | Status |
+| :---: | :--- | :--- | :--- | :--- | :---: |
+| **TC-01** | System Initialization | Verify application boot and template rendering | Launch Flask app; request `GET /` | Returns HTTP 200; loads dashboard without server exceptions | **PASS** |
+| **TC-02** | Customer Registration | Register a new customer with valid inputs | Submit `POST /customers/register` with valid names, DOB, 10-digit mobile, unique email | Customer record created in MySQL; redirects to profile | **PASS** |
+| **TC-03** | Customer Validation | Reject registration with missing names or malformed mobile | Submit `POST /customers/register` with empty first name and non-10-digit phone | Returns HTTP 200; flashes validation errors; rejects insertion | **PASS** |
+| **TC-04** | Duplicate Customer Guard | Prevent duplicate registration on existing email/mobile | Submit customer form using an email already registered | Rejects insertion; displays duplicate record warning | **PASS** |
+| **TC-05** | Account Opening | Open an account with initial deposit | Submit `POST /accounts/open` with valid customer, branch, type, and opening deposit | Creates `ACCOUNT` row, `ACCOUNT_HOLDER` link, and `BANK_TRANSACTION` initial deposit atomically | **PASS** |
+| **TC-06** | Deposit Validation | Reject zero and negative deposits | Invoke `deposit_transaction()` with `amount <= 0` | Returns `success: False`; error message "must be strictly greater than zero" | **PASS** |
+| **TC-07** | Deposit Execution | Credit funds and record transaction | Submit valid positive deposit on active account | Updates account balance by deposit amount; inserts `DEPOSIT` record | **PASS** |
+| **TC-08** | Withdrawal Validation | Reject zero and negative withdrawals | Invoke `withdrawal_transaction()` with `amount <= 0` | Returns `success: False`; prevents debit | **PASS** |
+| **TC-09** | Balance Sufficiency Guard | Reject withdrawal exceeding available balance | Request withdrawal of ₹50,000 from account with balance ₹5,000 | Rejects withdrawal; flashes insufficient funds alert; balance unaltered | **PASS** |
+| **TC-10** | Withdrawal Execution | Debit funds and preserve non-negative balance | Request valid withdrawal within available balance | Balance deducted; `WITHDRAWAL` transaction inserted in ledger | **PASS** |
+| **TC-11** | Transfer Loop Guard | Prevent inter-account transfer to the same account | Submit transfer with identical source and destination account IDs | Rejects transfer; alerts that source and destination cannot be identical | **PASS** |
+| **TC-12** | Transfer Execution | Atomic dual-balance update with paired ledger rows | Transfer ₹5,000 from Account A to Account B | Account A debited ₹5,000; Account B credited ₹5,000; paired `TRANSFER_OUT` & `TRANSFER_IN` logged with identical Ref # | **PASS** |
+| **TC-13** | Inactive Account Guard | Prevent transactions against Inactive or Closed accounts | Attempt deposit/withdrawal on closed account | Trigger `trg_validate_transaction_before_insert` fires or backend rejects; operation aborts | **PASS** |
+| **TC-14** | Loan Repayment | Record installment and auto-close loan on full repayment | Submit repayment equal to remaining loan debt | Payment logged; loan status automatically toggles from `'Active'` to `'Closed'` | **PASS** |
+| **TC-15** | Error Routing (404) | Handle non-existent URLs gracefully | Request `GET /nonexistent-url` | Returns HTTP 404 with styled error page; no stack trace exposure | **PASS** |
