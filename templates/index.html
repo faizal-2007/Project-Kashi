@@ -5,14 +5,14 @@
 {% block content %}
 
 {% if db_error %}
-<div class="card" style="border-left: 4px solid var(--danger);">
-    <div class="card-header" style="background-color: var(--danger-bg);">
-        <h3 style="color: var(--danger);">MySQL Database Connection Notice</h3>
+<div class="card card-error">
+    <div class="card-header">
+        <h3>MySQL database connection notice</h3>
     </div>
     <div class="card-body">
         <p><strong>Status:</strong> {{ db_error }}</p>
-        <p style="margin-top: 0.5rem; color: var(--text-muted);">
-            To connect to your local MySQL server, ensure your MySQL service is running, create the database with <code>sql/schema.sql</code>, and update your credentials in the <code>.env</code> file (or copy from <code>.env.example</code>).
+        <p class="muted-note">
+            To connect to your local MySQL server, make sure the service is running, create the database with <code>sql/schema.sql</code>, and set your credentials in <code>.env</code> (copy it from <code>.env.example</code>).
         </p>
     </div>
 </div>
@@ -21,80 +21,90 @@
 <div class="page-header">
     <div>
         <h2 class="page-title">Executive Banking Dashboard</h2>
-        <p class="page-subtitle">Real-time indicators directly aggregated from MySQL relational tables</p>
+        <p class="page-subtitle">Figures below are read live from the MySQL relational tables</p>
     </div>
-    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-        <a href="{{ url_for('customer_register') }}" class="btn btn-primary">+ New Customer</a>
-        <a href="{{ url_for('account_open') }}" class="btn btn-accent">+ Open Account</a>
-        <a href="{{ url_for('transfer') }}" class="btn btn-secondary">&rightleftharpoons; Fund Transfer</a>
-    </div>
-</div>
-
-<!-- Key Performance Indicators (Direct from DB) -->
-<div class="stat-grid">
-    <div class="stat-card primary">
-        <div class="stat-label">Total Customers</div>
-        <div class="stat-value">{{ stats.customers }}</div>
-    </div>
-    <div class="stat-card success">
-        <div class="stat-label">Active Accounts</div>
-        <div class="stat-value">{{ stats.active_accounts }} <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: normal;">/ {{ stats.accounts }}</span></div>
-    </div>
-    <div class="stat-card accent">
-        <div class="stat-label">Total Deposits Volume</div>
-        <div class="stat-value">{{ stats.total_deposits | currency }}</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-label">Operating Branches</div>
-        <div class="stat-value">{{ stats.branches }}</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-label">Total Transactions</div>
-        <div class="stat-value">{{ stats.transactions }}</div>
+    <div class="page-actions">
+        <a href="{{ url_for('customer_register') }}" class="btn btn-primary">New customer</a>
+        <a href="{{ url_for('account_open') }}" class="btn btn-accent">Open account</a>
+        <a href="{{ url_for('transfer') }}" class="btn btn-secondary">Fund transfer</a>
     </div>
 </div>
 
-<!-- Quick Action Shortcuts Panel -->
+<!-- The ledger plate: the bank's position, read straight off the books -->
+<section class="ledger-plate" aria-label="Bank position">
+    <div class="plate-main">
+        <p class="plate-label">Deposits on the books</p>
+        <p class="plate-figure">{{ stats.total_deposits | currency }}</p>
+        <p class="plate-note">Summed from every open account balance across {{ stats.branches }} branches</p>
+    </div>
+    <dl class="plate-facts">
+        <div class="plate-fact">
+            <dt>Customers on record</dt>
+            <dd>{{ stats.customers }}</dd>
+        </div>
+        <div class="plate-fact">
+            <dt>Active accounts</dt>
+            <dd>{{ stats.active_accounts }}<span class="fact-sub"> / {{ stats.accounts }}</span></dd>
+        </div>
+        <div class="plate-fact">
+            <dt>Transactions posted</dt>
+            <dd>{{ stats.transactions }}</dd>
+        </div>
+        <div class="plate-fact">
+            <dt>Branch network</dt>
+            <dd>{{ stats.branches }}</dd>
+        </div>
+    </dl>
+</section>
+
+<!-- Counter operations -->
 <div class="card">
     <div class="card-header">
-        <h3>Core Banking Operations</h3>
+        <h3>Counter operations</h3>
     </div>
-    <div class="card-body" style="display: flex; gap: 1rem; flex-wrap: wrap;">
-        <a href="{{ url_for('deposit') }}" class="btn btn-success" style="flex: 1; min-width: 150px;">
-            <span>&darr;</span> Cash Deposit
-        </a>
-        <a href="{{ url_for('withdrawal') }}" class="btn btn-danger" style="flex: 1; min-width: 150px;">
-            <span>&uarr;</span> Withdrawal
-        </a>
-        <a href="{{ url_for('transfer') }}" class="btn btn-primary" style="flex: 1; min-width: 150px;">
-            <span>&rightleftharpoons;</span> Inter-Account Transfer
-        </a>
-        <a href="{{ url_for('loan_create') }}" class="btn btn-accent" style="flex: 1; min-width: 150px;">
-            <span>&#128176;</span> Sanction Loan
-        </a>
-        <a href="{{ url_for('business_queries') }}" class="btn btn-secondary" style="flex: 1; min-width: 150px;">
-            <span>&#128202;</span> 15 Business SQL Queries
-        </a>
+    <div class="card-body">
+        <div class="action-strip">
+            <a href="{{ url_for('deposit') }}" class="action-tile">
+                <span class="action-symbol" aria-hidden="true">&darr;</span>
+                <span class="action-name">Cash deposit</span>
+                <span class="action-hint">Credit money into an account</span>
+            </a>
+            <a href="{{ url_for('withdrawal') }}" class="action-tile">
+                <span class="action-symbol" aria-hidden="true">&uarr;</span>
+                <span class="action-name">Withdrawal</span>
+                <span class="action-hint">Debit cash or ATM payout</span>
+            </a>
+            <a href="{{ url_for('transfer') }}" class="action-tile">
+                <span class="action-symbol" aria-hidden="true">&#8644;</span>
+                <span class="action-name">Fund transfer</span>
+                <span class="action-hint">Move money between accounts</span>
+            </a>
+            <a href="{{ url_for('loan_create') }}" class="action-tile">
+                <span class="action-symbol" aria-hidden="true">&#8377;</span>
+                <span class="action-name">Sanction loan</span>
+                <span class="action-hint">Approve a new credit facility</span>
+            </a>
+        </div>
     </div>
 </div>
 
-<!-- Recent Transactions Table -->
+<!-- Recent ledger activity -->
 <div class="card">
     <div class="card-header">
-        <h3>Recent Account Ledger Activity</h3>
-        <a href="{{ url_for('transactions') }}" class="btn btn-secondary btn-sm">View All Transactions &rarr;</a>
+        <h3>Recent ledger activity</h3>
+        <a href="{{ url_for('transactions') }}" class="btn btn-secondary btn-sm">View full ledger</a>
     </div>
-    <div class="card-body" style="padding: 0;">
+    <div class="card-body card-body-flush">
         <div class="table-responsive">
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Ref Number</th>
-                        <th>Account #</th>
+                        <th>Ref number</th>
+                        <th>Account</th>
                         <th>Customer</th>
                         <th>Type</th>
-                        <th>Amount</th>
-                        <th>Date &amp; Time</th>
+                        <th class="num">Amount</th>
+                        <th>Date & time</th>
                         <th>Status</th>
                     </tr>
                 </thead>
@@ -111,7 +121,7 @@
                                 <span class="badge badge-withdrawal">{{ tx.TransactionType }}</span>
                             {% endif %}
                         </td>
-                        <td><strong>{{ tx.Amount | currency }}</strong></td>
+                        <td class="num"><strong>{{ tx.Amount | currency }}</strong></td>
                         <td>{{ tx.TransactionDate | dateformat("%d %b %Y, %I:%M %p") }}</td>
                         <td>
                             <span class="badge badge-active">{{ tx.TransactionStatus }}</span>
@@ -119,8 +129,8 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">
-                            No transaction records found. Load sample data using <code>sql/sample_data.sql</code> or perform a deposit.
+                        <td colspan="7" class="empty-cell">
+                            No transactions yet. Load <code>sql/sample_data.sql</code>, or post a deposit to open the ledger.
                         </td>
                     </tr>
                     {% endfor %}

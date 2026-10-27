@@ -78,10 +78,6 @@ def test_loans_route_loads(client):
     assert response.status_code == 200
     assert b"Credit &amp; Loan Facilities" in response.data or b"Credit & Loan Facilities" in response.data
 
-def test_business_queries_route_loads(client):
-    response = client.get("/business-queries")
-    assert response.status_code == 200
-    assert b"SQL Business Analytics" in response.data
 
 def test_404_handling(client):
     response = client.get("/page-that-definitely-does-not-exist")

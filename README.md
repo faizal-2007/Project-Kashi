@@ -3,7 +3,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-3.0%2B-black.svg)](https://palletsprojects.com/p/flask/)
 [![MySQL](https://img.shields.io/badge/MySQL-8.0%2B-orange.svg)](https://www.mysql.com/)
-[![Tests](https://img.shields.io/badge/Tests-25%20Passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-24%20Passed-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/License-Academic-lightgrey.svg)]()
 
 > **Academic DBMS Project for B.Tech Computer Science and Engineering**  
@@ -21,7 +21,6 @@
 * **Many-to-Many Modeling**: Connects customers and accounts using the `ACCOUNT_HOLDER` associative bridge table, allowing single and joint account structures.
 * **ACID Transactions**: Atomic deposits, withdrawals, and inter-account transfers with pessimistic row locking (`SELECT ... FOR UPDATE`) and deadlock-free ordered locking.
 * **Database Automation**: User-defined stored functions, stored procedures, audit triggers, and database views.
-* **15 SQL Business Queries**: Built-in interactive analytics runner demonstrating joins, aggregations, subqueries, and set differences.
 * **100% Parameterized SQL**: Zero string concatenation; fully resilient against SQL Injection.
 * **Graceful Degradation**: Clear offline warnings when database is disconnected; no raw 500 error stacktraces.
 
@@ -47,8 +46,7 @@ Project Kashi/
 │   ├── views.sql               # Database views for reporting and statements
 │   ├── functions.sql           # Stored functions (Age, Balance, EMI, Customer Balance)
 │   ├── procedures.sql          # ACID Stored procedures for deposits, withdrawals, transfers
-│   ├── triggers.sql            # Audit triggers, balance validation, state guards
-│   └── business_queries.sql    # 15 Analytical SQL business solutions
+│   └── triggers.sql            # Audit triggers, balance validation, state guards
 │
 ├── templates/                  # Frontend HTML5 (Jinja2 Templates)
 │   ├── base.html               # Master layout with navigation & DB status pill
@@ -70,18 +68,17 @@ Project Kashi/
 │   ├── loans.html              # Credit & loan portfolio register
 │   ├── loan_form.html          # Loan sanction application
 │   ├── loan_payments.html      # Loan repayment form & installment history
-│   ├── business_queries.html   # Interactive 15-problem SQL analytics runner
 │   ├── error.html              # Friendly error notification page
 │   └── 404.html                # Not Found error page
 │
 ├── static/
 │   ├── css/
-│   │   └── style.css           # Institutional banking stylesheet (Navy/Gold/Emerald)
+│   │   └── style.css           # Counter-ledger stylesheet (bottle green, stone, marigold)
 │   └── js/
 │       └── main.js             # Client-side transaction confirmations & alerts
 │
 ├── docs/                       # Technical Documentation & Viva Prep
-│   ├── PROJECT_REPORT.md       # Complete 40-section academic project report
+│   ├── PROJECT_REPORT.md       # Complete 39-section academic project report
 │   ├── ER_DIAGRAM.md           # ER diagram with Mermaid diagram & M:N explanation
 │   ├── ER_DIAGRAM.mmd          # Standalone Mermaid ER diagram source file
 │   ├── RELATIONAL_SCHEMA.md    # Formal relational schema notation & referential rules
@@ -90,14 +87,12 @@ Project Kashi/
 │   ├── RELATIONSHIPS_AND_CARDINALITY.md # Detailed 7-relationship cardinality analysis
 │   ├── APPLICATION_WORKFLOW.md # Three-tier architecture & data lifecycle documentation
 │   ├── DBMS_CONCEPTS.md        # Comprehensive DBMS theory, ACID, views, and security
-│   ├── BUSINESS_PROBLEMS.md    # 15 SQL business problems with queries & explanations
 │   ├── TEST_CASES.md           # Functional & transaction test cases (TC-01 to TC-15)
-│   ├── VIVA_QUESTIONS.md       # 45 Beginner-friendly viva questions and answers
 │   ├── TROUBLESHOOTING.md      # Troubleshooting guide for Windows & MySQL setup
-│   └── SCREENSHOTS.md          # Guide for 13 essential evaluation screenshots
+│   └── SCREENSHOTS.md          # Guide for 12 essential evaluation screenshots
 │
 ├── tests/
-│   ├── test_app.py             # 25 automated pytest tests
+│   ├── test_app.py             # 24 automated pytest tests
 │   └── README.md               # Testing documentation and instructions
 │
 └── screenshots/
@@ -170,7 +165,7 @@ Verify system integrity by running the test suite:
 ```cmd
 pytest -v tests/test_app.py
 ```
-*(All 25 tests should pass).*
+*(All 24 tests should pass).*
 
 ### Step 7: Start the Web Application
 ```cmd
@@ -186,21 +181,7 @@ You will be greeted by the **Project Kashi Executive Banking Dashboard** with li
 
 ---
 
-## 5. Running the 15 SQL Business Queries
-
-In the web application, click the **"SQL Queries"** link in the navigation bar (`http://127.0.0.1:5000/business-queries`).
-* Click any of the 15 query tabs (Problems 1 through 15).
-* Inspect the problem description, educational DBMS concept tags, and raw executable SQL.
-* View the live MySQL table output dynamically generated from your local database!
-
-Alternatively, execute them via MySQL CLI:
-```cmd
-mysql -u root -p project_kashi < sql\business_queries.sql
-```
-
----
-
-## 6. Pushing to GitHub
+## 5. Pushing to GitHub
 
 To push this repository to your personal GitHub account:
 
@@ -224,16 +205,14 @@ git push -u origin main
 
 ---
 
-## 7. Submission Checklist for 28 October 2026
+## 6. Submission Checklist for 28 October 2026
 
 * [x] All 8 relational tables implemented and normalized to 3NF.
 * [x] Many-to-Many customer-account bridge entity (`ACCOUNT_HOLDER`) functional.
 * [x] ACID deposit, withdrawal, and transfer workflows with rollback protection.
 * [x] Stored procedures, functions, triggers, and views created and documented.
-* [x] 15 SQL analytical business queries runnable via web UI.
-* [x] 25 automated unit and validation tests passing.
-* [x] Complete 40-section academic project report (`docs/PROJECT_REPORT.md`).
-* [x] 45 viva voce questions and answers ready for evaluation (`docs/VIVA_QUESTIONS.md`).
+* [x] 24 automated unit and validation tests passing.
+* [x] Complete 39-section academic project report (`docs/PROJECT_REPORT.md`).
 * [x] Windows CMD setup guide and `.gitignore` protecting credentials.
 
 ---

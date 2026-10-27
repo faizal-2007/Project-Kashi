@@ -77,4 +77,4 @@ To run the automated test suite locally:
 .venv\Scripts\activate
 pytest -v tests/test_app.py
 ```
-All 25 unit and route validation tests will execute and output green status indicators.
+All 24 unit and route validation tests will execute and output green status indicators.

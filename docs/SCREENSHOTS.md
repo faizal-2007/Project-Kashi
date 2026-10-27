@@ -1,6 +1,6 @@
 # Screenshot Capture & Documentation Guide — Project Kashi
 
-This guide documents the 13 essential screenshots required for your academic project evaluation, lab submission, and project report.
+This guide documents the 12 essential screenshots required for your academic project evaluation, lab submission, and project report.
 
 ---
 
@@ -8,7 +8,7 @@ This guide documents the 13 essential screenshots required for your academic pro
 
 | # | Screenshot Filename | View / Page | Key Visual Elements to Include |
 | :---: | :--- | :--- | :--- |
-| **01** | `01_dashboard.png` | Executive Dashboard (`/`) | Total Customers card, Active Accounts, Total Deposits (₹), and Recent Transactions table. |
+| **01** | `01_dashboard.png` | Executive Dashboard (`/`) | Ledger plate with total deposits, the four position facts, counter operations, and recent ledger activity. |
 | **02** | `02_customer_registration.png` | Customer Form (`/customers/register`) | Input fields (Name, DOB, Mobile, Email, Address, City) and validation elements. |
 | **03** | `03_customer_directory.png` | Customer List (`/customers`) | Customer records table with search input and "+ Register Customer" action button. |
 | **04** | `04_customer_portfolio.png` | Customer Detail (`/customers/1`) | Demographics card, linked bank accounts with holder roles, and active loans. |
@@ -18,9 +18,8 @@ This guide documents the 13 essential screenshots required for your academic pro
 | **08** | `08_withdrawal_operation.png` | Withdrawal Screen (`/withdrawal`) | Debit account selection, amount validation, and post-withdrawal balance alert. |
 | **09** | `09_transfer_operation.png` | EFT Transfer (`/transfer`) | Source and destination selectors, transfer amount, and confirmation dialog prompt. |
 | **10** | `10_transactions_ledger.png` | Transactions Ledger (`/transactions`) | Comprehensive ledger showing `DEPOSIT`, `WITHDRAWAL`, `TRANSFER_IN`, and `TRANSFER_OUT` rows. |
-| **11** | `11_sql_business_analytics.png` | Business Analytics (`/business-queries`) | Query tab pills, syntax-highlighted SQL box, and live executed MySQL output table. |
-| **12** | `12_loan_management.png` | Loan Portfolio (`/loans`) | Loan facilities table displaying sanctioned principal, repayments, and outstanding debt. |
-| **13** | `13_mysql_cli_tables.png` | MySQL CLI or Workbench | Output of `SHOW TABLES;` and `DESCRIBE ACCOUNT;` in MySQL Command Line Client. |
+| **11** | `11_loan_management.png` | Loan Portfolio (`/loans`) | Loan facilities table displaying sanctioned principal, repayments, and outstanding debt. |
+| **12** | `12_mysql_cli_tables.png` | MySQL CLI or Workbench | Output of `SHOW TABLES;` and `DESCRIBE ACCOUNT;` in MySQL Command Line Client. |
 
 ---
 

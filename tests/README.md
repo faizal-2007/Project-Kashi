@@ -7,7 +7,7 @@ This directory contains automated unit and integration tests for **Project Kashi
 ## 1. Test Overview
 
 * **`test_app.py`**:
-  * **Route Availability & Rendering**: Ensures all 13 core routes (`/`, `/customers`, `/accounts`, `/deposit`, `/withdrawal`, `/transfer`, `/transactions`, `/branches`, `/employees`, `/loans`, `/business-queries`, etc.) load without crashing and render valid HTML templates even if MySQL is initializing or disconnected.
+  * **Route Availability & Rendering**: Ensures all 12 core routes (`/`, `/customers`, `/accounts`, `/deposit`, `/withdrawal`, `/transfer`, `/transactions`, `/branches`, `/employees`, `/loans`, etc.) load without crashing and render valid HTML templates even if MySQL is initializing or disconnected.
   * **HTTP 404 Handler**: Confirms that non-existent routes return HTTP 404 with friendly user messaging rather than a server stacktrace.
   * **Financial Validation**: Asserts that deposits, withdrawals, and transfers reject negative or zero values.
   * **Transfer Anti-Loop Guard**: Asserts that inter-account transfers reject identical source and destination accounts.
@@ -38,7 +38,6 @@ tests/test_app.py::test_transactions_route_loads PASSED
 tests/test_app.py::test_branches_route_loads PASSED
 tests/test_app.py::test_employees_route_loads PASSED
 tests/test_app.py::test_loans_route_loads PASSED
-tests/test_app.py::test_business_queries_route_loads PASSED
 tests/test_app.py::test_404_handling PASSED
 tests/test_app.py::test_zero_amount_deposit_rejected PASSED
 tests/test_app.py::test_negative_amount_deposit_rejected PASSED

@@ -4,84 +4,99 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Project Kashi — Banking Management System{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
 
-    <!-- Header & Navigation -->
-    <header class="navbar">
-        <div class="nav-container">
-            <a href="{{ url_for('index') }}" class="brand">
-                <div class="brand-icon">K</div>
-                <div class="brand-text">
-                    <h1>Project Kashi</h1>
-                    <span>Banking Management System</span>
+<a class="skip-link" href="#main-content">Skip to content</a>
+
+<div class="shell">
+
+    <!-- Side navigation -->
+    <aside class="sidebar">
+        <a href="{{ url_for('index') }}" class="brand">
+            <span class="brand-icon" aria-hidden="true">K</span>
+            <span class="brand-text">
+                <strong>Project Kashi</strong>
+                <small>Banking Management System</small>
+            </span>
+        </a>
+
+        <nav class="side-nav" aria-label="Primary">
+            <p class="nav-group-label">Overview</p>
+            <ul>
+                <li><a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' }}">Dashboard</a></li>
+            </ul>
+
+            <p class="nav-group-label">Directory</p>
+            <ul>
+                <li><a href="{{ url_for('customer_list') }}" class="{{ 'active' if request.endpoint in ['customer_list', 'customer_register', 'customer_detail'] }}">Customers</a></li>
+                <li><a href="{{ url_for('branch_list') }}" class="{{ 'active' if request.endpoint in ['branch_list', 'branch_create'] }}">Branches</a></li>
+                <li><a href="{{ url_for('employee_list') }}" class="{{ 'active' if request.endpoint in ['employee_list', 'employee_create'] }}">Employees</a></li>
+            </ul>
+
+            <p class="nav-group-label">Banking</p>
+            <ul>
+                <li><a href="{{ url_for('account_list') }}" class="{{ 'active' if request.endpoint in ['account_list', 'account_open', 'account_detail'] }}">Accounts</a></li>
+                <li><a href="{{ url_for('deposit') }}" class="{{ 'active' if request.endpoint == 'deposit' }}">Deposit</a></li>
+                <li><a href="{{ url_for('withdrawal') }}" class="{{ 'active' if request.endpoint == 'withdrawal' }}">Withdraw</a></li>
+                <li><a href="{{ url_for('transfer') }}" class="{{ 'active' if request.endpoint == 'transfer' }}">Transfer</a></li>
+                <li><a href="{{ url_for('transactions') }}" class="{{ 'active' if request.endpoint == 'transactions' }}">Transactions</a></li>
+            </ul>
+
+            <p class="nav-group-label">Credit</p>
+            <ul>
+                <li><a href="{{ url_for('loan_list') }}" class="{{ 'active' if request.endpoint in ['loan_list', 'loan_create', 'loan_payments'] }}">Loans</a></li>
+            </ul>
+        </nav>
+
+        <div class="sidebar-status">
+            {% if db_connected %}
+                <span class="status-pill online" title="{{ db_message }}">
+                    <span class="status-dot"></span> MySQL 8.0 connected
+                </span>
+            {% else %}
+                <span class="status-pill offline" title="{{ db_message }}">
+                    <span class="status-dot"></span> Database offline
+                </span>
+            {% endif %}
+        </div>
+    </aside>
+
+    <!-- Page content -->
+    <div class="content">
+        <main id="main-content" class="main-wrapper">
+            <div class="alert-container">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}">
+                                <span>{{ message }}</span>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+            </div>
+
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer class="footer">
+            <div class="footer-container">
+                <div>
+                    <strong>Project Kashi — Banking Management System</strong> | Academic DBMS Project (B.Tech CSE)
                 </div>
-            </a>
-
-            <nav>
-                <ul class="nav-links">
-                    <li><a href="{{ url_for('index') }}">Dashboard</a></li>
-                    <li><a href="{{ url_for('customer_list') }}">Customers</a></li>
-                    <li><a href="{{ url_for('account_list') }}">Accounts</a></li>
-                    <li><a href="{{ url_for('deposit') }}">Deposit</a></li>
-                    <li><a href="{{ url_for('withdrawal') }}">Withdraw</a></li>
-                    <li><a href="{{ url_for('transfer') }}">Transfer</a></li>
-                    <li><a href="{{ url_for('transactions') }}">Transactions</a></li>
-                    <li><a href="{{ url_for('branch_list') }}">Branches</a></li>
-                    <li><a href="{{ url_for('employee_list') }}">Employees</a></li>
-                    <li><a href="{{ url_for('loan_list') }}">Loans</a></li>
-                    <li><a href="{{ url_for('business_queries') }}" style="color: #f6d365; font-weight:700;">SQL Queries</a></li>
-                </ul>
-            </nav>
-
-            <div class="nav-status">
-                {% if db_connected %}
-                    <span class="status-pill online" title="{{ db_message }}">
-                        <span class="status-dot"></span> MySQL 8.0 Connected
-                    </span>
-                {% else %}
-                    <span class="status-pill offline" title="{{ db_message }}">
-                        <span class="status-dot"></span> DB Disconnected
-                    </span>
-                {% endif %}
+                <div>
+                    Flask & MySQL 8.0 &bull; Normalized schema &bull; ACID transactions
+                </div>
             </div>
-        </div>
-    </header>
+        </footer>
+    </div>
+</div>
 
-    <!-- Main Content Container -->
-    <main class="main-wrapper">
-        <!-- Flash Messages -->
-        <div class="alert-container">
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="alert alert-{{ category }}">
-                            <span>{{ message }}</span>
-                        </div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-        </div>
-
-        {% block content %}{% endblock %}
-    </main>
-
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="footer-container">
-            <div>
-                <strong>Project Kashi — Banking Management System</strong> | Academic DBMS Project (B.Tech CSE)
-            </div>
-            <div>
-                Designed with Flask &amp; MySQL 8.0 | Normalized Schema &bull; ACID Transactions
-            </div>
-        </div>
-    </footer>
-
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

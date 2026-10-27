@@ -163,12 +163,12 @@ The physical database is defined in `sql/schema.sql` and populated with realisti
 ---
 
 ## 21. Flask Backend Implementation
-The application logic in `app.py` exposes 15 dedicated endpoints covering customer lifecycle, account management, deposit/withdrawal transactions, fund transfers, employee/branch management, and loan servicing.
+The application logic in `app.py` exposes dedicated endpoints covering customer lifecycle, account management, deposit/withdrawal transactions, fund transfers, employee/branch management, and loan servicing.
 
 ---
 
 ## 22. HTML Frontend Implementation
-Templates located in `templates/` utilize Jinja2 template inheritance extending `templates/base.html`. Pages include dashboard metric cards, search inputs, responsive data tables, status badges, and transaction confirmation prompts.
+Templates located in `templates/` utilize Jinja2 template inheritance extending `templates/base.html`, which renders a fixed side navigation grouped by area (Overview, Directory, Banking, Credit) with a live database status pill. Pages include a dashboard ledger plate, search inputs, responsive data tables, status badges, and transaction confirmation prompts.
 
 ---
 
@@ -202,12 +202,7 @@ Selection of source and destination $\rightarrow$ verification `src != dest` $\r
 
 ---
 
-## 29. SQL Business Queries
-Fifteen analytical queries are defined in `sql/business_queries.sql` and interactively executable via the web UI at `/business-queries`, covering multi-table joins, conditional aggregations, subqueries, and set differences.
-
----
-
-## 30. Views
+## 29. Views
 Defined in `sql/views.sql`:
 1. `vw_customer_account_summary`: Combines customer profiles with linked accounts and branch data.
 2. `vw_account_transaction_history`: Formats chronological statement entries.
@@ -216,7 +211,7 @@ Defined in `sql/views.sql`:
 
 ---
 
-## 31. Stored Functions
+## 30. Stored Functions
 Defined in `sql/functions.sql`:
 1. `fn_calculate_customer_age(p_dob)`: Calculates age in years.
 2. `fn_get_account_balance(p_account_id)`: Fetches real-time account balance.
@@ -225,7 +220,7 @@ Defined in `sql/functions.sql`:
 
 ---
 
-## 32. Stored Procedures
+## 31. Stored Procedures
 Defined in `sql/procedures.sql`:
 1. `sp_deposit_funds`: Encapsulates atomic deposit with row-level locking.
 2. `sp_withdraw_funds`: Executes atomic withdrawal with balance validation.
@@ -235,7 +230,7 @@ Defined in `sql/procedures.sql`:
 
 ---
 
-## 33. Triggers
+## 32. Triggers
 Defined in `sql/triggers.sql`:
 1. `trg_validate_transaction_before_insert`: Enforces positive amounts and blocks inactive accounts.
 2. `trg_prevent_negative_balance_before_update`: Prevents account balances from falling below zero.
@@ -244,12 +239,12 @@ Defined in `sql/triggers.sql`:
 
 ---
 
-## 34. ACID Properties and Transactions
+## 33. ACID Properties and Transactions
 Detailed explanation of how MySQL InnoDB and Python Flask coordinate transactions to satisfy Atomicity, Consistency, Isolation, and Durability, with specific examples from fund transfer workflows.
 
 ---
 
-## 35. Security Considerations
+## 34. Security Considerations
 * **Parameterized Queries**: 100% of SQL statements utilize parameter placeholders (`%s`), preventing SQL injection.
 * **Separation of Secrets**: Database credentials and secret keys reside in `.env`, excluded from version control via `.gitignore`.
 * **State Mutation via POST**: Financial balance updates require HTTP POST with client confirmation prompts.
@@ -257,17 +252,17 @@ Detailed explanation of how MySQL InnoDB and Python Flask coordinate transaction
 
 ---
 
-## 36. Testing and Results
-Automated test suite (`tests/test_app.py`) includes 25 unit and integration test cases covering route rendering, 404 handling, input validation, and transaction business logic. All 25 tests pass in approximately 1.1 seconds.
+## 35. Testing and Results
+Automated test suite (`tests/test_app.py`) includes 24 unit and integration test cases covering route rendering, 404 handling, input validation, and transaction business logic. All 24 tests pass in approximately 1.1 seconds.
 
 ---
 
-## 37. Screenshots
+## 36. Screenshots
 A directory (`screenshots/`) and capture checklist ([`docs/SCREENSHOTS.md`](SCREENSHOTS.md)) outline 13 recommended screenshots documenting the working system.
 
 ---
 
-## 38. Limitations
+## 37. Limitations
 As an academic project:
 * Operates on a single local MySQL server without geo-distributed replication.
 * Does not connect to live clearing houses (RBI / NPCI / NEFT networks).
@@ -275,7 +270,7 @@ As an academic project:
 
 ---
 
-## 39. Future Enhancements
+## 38. Future Enhancements
 * Role-based access control (RBAC) separating Teller, Branch Manager, and Customer roles.
 * Customer net banking portal with personal transaction downloads (PDF/CSV passbook exports).
 * Automated interest calculation scheduled tasks (cron jobs).
@@ -283,5 +278,5 @@ As an academic project:
 
 ---
 
-## 40. Conclusion
+## 39. Conclusion
 Project Kashi successfully demonstrates how core DBMS theory directly translates into reliable, secure software engineering. By combining normalized relational schemas, strict integrity constraints, ACID-compliant transaction boundaries, procedural database routines, and secure parameterized queries, the project provides a comprehensive academic banking management system ready for evaluation.
